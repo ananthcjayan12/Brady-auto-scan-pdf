@@ -1,0 +1,4 @@
+flask
+flask-cors
+reportlab
+pypiwin32; platform_system == 'Windows'
