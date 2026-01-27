@@ -10,14 +10,14 @@ const SAMPLE_INPUT = '1PABC12345678GS99SXYZ789012345678GSQ10';
 function App() {
   // Navigation
   const [activeTab, setActiveTab] = useState('dashboard');
-  
+
   // App State
   const [scanValue, setScanValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState({ type: 'idle', message: 'Ready to scan' });
   const [printers, setPrinters] = useState([]);
   const [selectedPrinter, setSelectedPrinter] = useState('');
-  
+
   // Settings (Persisted in localStorage)
   const [autoPrint, setAutoPrint] = useState(() => {
     return localStorage.getItem('autoPrint') === 'false' ? false : true;
@@ -102,9 +102,9 @@ function App() {
       });
 
       if (response.data.success) {
-        setStatus({ 
-          type: 'success', 
-          message: `Printed label for ${labelToPrint.parsed_data.part_no}` 
+        setStatus({
+          type: 'success',
+          message: `Printed label for ${labelToPrint.parsed_data.part_no}`
         });
       } else {
         setStatus({ type: 'error', message: response.data.error || 'Failed to print' });
@@ -119,7 +119,7 @@ function App() {
 
   const handleLookup = async (value) => {
     if (isLoading) return;
-    
+
     setIsLoading(true);
     setStatus({ type: 'loading', message: `Generating label: ${value}` });
     setCurrentLabel(null);
@@ -159,11 +159,11 @@ function App() {
           <h1>Nokia Label Bridge</h1>
           <span className="version">v2.1</span>
         </div>
-        
+
         <div className="printer-selector">
           <Printer size={18} />
-          <select 
-            value={selectedPrinter} 
+          <select
+            value={selectedPrinter}
             onChange={(e) => setSelectedPrinter(e.target.value)}
             disabled={isLoading}
           >
@@ -175,18 +175,18 @@ function App() {
 
       <main className="app-main">
         <nav className="tab-nav">
-          <button 
+          <button
             className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
             onClick={() => setActiveTab('dashboard')}
           >
-            <LayoutDashboard size={18} style={{marginRight: '8px'}} />
+            <LayoutDashboard size={18} style={{ marginRight: '8px' }} />
             Dashboard
           </button>
-          <button 
+          <button
             className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
             onClick={() => setActiveTab('settings')}
           >
-            <Settings size={18} style={{marginRight: '8px'}} />
+            <Settings size={18} style={{ marginRight: '8px' }} />
             Settings
           </button>
         </nav>
@@ -201,7 +201,7 @@ function App() {
                 <p>{status.message}</p>
               </div>
 
-              <BarcodeInput 
+              <BarcodeInput
                 value={scanValue}
                 onChange={setScanValue}
                 onLookup={handleLookup}
@@ -222,10 +222,10 @@ function App() {
             <div className="right-panel">
               <div className="preview-panel">
                 <div className="preview-header">
-                  <h3><Eye size={18} style={{verticalAlign: 'middle', marginRight: '8px'}} /> Label Preview</h3>
+                  <h3><Eye size={18} style={{ verticalAlign: 'middle', marginRight: '8px' }} /> Label Preview</h3>
                   {currentLabel && (
-                    <button 
-                      className="print-btn" 
+                    <button
+                      className="print-btn"
                       onClick={() => handlePrint()}
                       disabled={isLoading}
                     >
@@ -233,11 +233,11 @@ function App() {
                     </button>
                   )}
                 </div>
-                
+
                 <div className="preview-container">
                   {currentLabel || templateLabel ? (
-                    <iframe 
-                      src={`${API_BASE_URL}${(currentLabel || templateLabel).pdf_url}#toolbar=0&navpanes=0&scrollbar=0`} 
+                    <iframe
+                      src={`${API_BASE_URL}${(currentLabel || templateLabel).pdf_url}#toolbar=0&navpanes=0&scrollbar=0`}
                       className="preview-frame"
                       key={(currentLabel || templateLabel).pdf_url}
                       title="Label Preview"
@@ -274,13 +274,13 @@ function App() {
             <div className="settings-container left-panel">
               <div className="settings-left">
                 <h2>System Settings</h2>
-                
+
                 <div className="setting-group">
                   <label className="checkbox-label">
-                    <input 
-                      type="checkbox" 
-                      checked={autoPrint} 
-                      onChange={(e) => setAutoPrint(e.target.checked)} 
+                    <input
+                      type="checkbox"
+                      checked={autoPrint}
+                      onChange={(e) => setAutoPrint(e.target.checked)}
                     />
                     Enable Auto-Printing
                   </label>
@@ -289,10 +289,10 @@ function App() {
 
                 <div className="setting-group">
                   <label>Printing Delay (seconds)</label>
-                  <input 
-                    type="number" 
-                    min="0" 
-                    max="10" 
+                  <input
+                    type="number"
+                    min="0"
+                    max="10"
                     className="setting-input"
                     value={printDelay}
                     onChange={(e) => setPrintDelay(parseInt(e.target.value) || 0)}
@@ -303,9 +303,9 @@ function App() {
 
                 <div className="setting-group">
                   <label>Default Printer</label>
-                  <select 
+                  <select
                     className="setting-input"
-                    value={selectedPrinter} 
+                    value={selectedPrinter}
                     onChange={(e) => setSelectedPrinter(e.target.value)}
                   >
                     {printers.map(p => <option key={p} value={p}>{p}</option>)}
@@ -313,17 +313,17 @@ function App() {
                 </div>
 
                 <hr className="settings-divider" />
-                
+
                 <div className="label-settings-grid">
                   <h3>Label Layout Settings</h3>
-                  
+
                   <div className="setting-item">
                     <label>Label Width (mm)</label>
                     <div className="slider-box">
-                      <input 
+                      <input
                         type="range" min="50" max="150" step="1"
                         value={labelSettings.labelWidth}
-                        onChange={(e) => setLabelSettings({...labelSettings, labelWidth: parseInt(e.target.value)})}
+                        onChange={(e) => setLabelSettings({ ...labelSettings, labelWidth: parseInt(e.target.value) })}
                       />
                       <span className="setting-val">{labelSettings.labelWidth}mm</span>
                     </div>
@@ -332,10 +332,10 @@ function App() {
                   <div className="setting-item">
                     <label>Label Height (mm)</label>
                     <div className="slider-box">
-                      <input 
+                      <input
                         type="range" min="20" max="80" step="1"
                         value={labelSettings.labelHeight}
-                        onChange={(e) => setLabelSettings({...labelSettings, labelHeight: parseInt(e.target.value)})}
+                        onChange={(e) => setLabelSettings({ ...labelSettings, labelHeight: parseInt(e.target.value) })}
                       />
                       <span className="setting-val">{labelSettings.labelHeight}mm</span>
                     </div>
@@ -344,10 +344,10 @@ function App() {
                   <div className="setting-item">
                     <label>Barcode Module Width</label>
                     <div className="slider-box">
-                      <input 
+                      <input
                         type="range" min="0.1" max="0.4" step="0.01"
                         value={labelSettings.barcodeWidthModule}
-                        onChange={(e) => setLabelSettings({...labelSettings, barcodeWidthModule: parseFloat(e.target.value)})}
+                        onChange={(e) => setLabelSettings({ ...labelSettings, barcodeWidthModule: parseFloat(e.target.value) })}
                       />
                       <span className="setting-val">{labelSettings.barcodeWidthModule}mm</span>
                     </div>
@@ -356,10 +356,10 @@ function App() {
                   <div className="setting-item">
                     <label>Barcode Height</label>
                     <div className="slider-box">
-                      <input 
+                      <input
                         type="range" min="2" max="10" step="0.5"
                         value={labelSettings.barcodeHeight}
-                        onChange={(e) => setLabelSettings({...labelSettings, barcodeHeight: parseFloat(e.target.value)})}
+                        onChange={(e) => setLabelSettings({ ...labelSettings, barcodeHeight: parseFloat(e.target.value) })}
                       />
                       <span className="setting-val">{labelSettings.barcodeHeight}mm</span>
                     </div>
@@ -368,10 +368,10 @@ function App() {
                   <div className="setting-item">
                     <label>Font Size (pt)</label>
                     <div className="slider-box">
-                      <input 
+                      <input
                         type="range" min="4" max="12" step="0.5"
                         value={labelSettings.fontSize}
-                        onChange={(e) => setLabelSettings({...labelSettings, fontSize: parseFloat(e.target.value)})}
+                        onChange={(e) => setLabelSettings({ ...labelSettings, fontSize: parseFloat(e.target.value) })}
                       />
                       <span className="setting-val">{labelSettings.fontSize}pt</span>
                     </div>
@@ -380,10 +380,10 @@ function App() {
                   <div className="setting-item">
                     <label>DataMatrix Size</label>
                     <div className="slider-box">
-                      <input 
+                      <input
                         type="range" min="10" max="30" step="1"
                         value={labelSettings.dmSize}
-                        onChange={(e) => setLabelSettings({...labelSettings, dmSize: parseInt(e.target.value)})}
+                        onChange={(e) => setLabelSettings({ ...labelSettings, dmSize: parseInt(e.target.value) })}
                       />
                       <span className="setting-val">{labelSettings.dmSize}mm</span>
                     </div>
@@ -392,17 +392,17 @@ function App() {
                   <div className="setting-item">
                     <label>Vertical Spacing</label>
                     <div className="slider-box">
-                      <input 
+                      <input
                         type="range" min="4" max="15" step="0.5"
                         value={labelSettings.verticalSpacing}
-                        onChange={(e) => setLabelSettings({...labelSettings, verticalSpacing: parseFloat(e.target.value)})}
+                        onChange={(e) => setLabelSettings({ ...labelSettings, verticalSpacing: parseFloat(e.target.value) })}
                       />
                       <span className="setting-val">{labelSettings.verticalSpacing}mm</span>
                     </div>
                   </div>
 
-                  <div style={{marginTop: '20px'}}>
-                    <button 
+                  <div style={{ marginTop: '20px' }}>
+                    <button
                       className="reset-btn"
                       onClick={() => setLabelSettings({
                         labelWidth: 100,
@@ -426,10 +426,10 @@ function App() {
                 <div className="preview-header">
                   <h3>Live Preview</h3>
                 </div>
-                <div className="preview-container" style={{background: 'white', border: '1px solid var(--border)'}}>
+                <div className="preview-container" style={{ background: 'white', border: '1px solid var(--border)' }}>
                   {templateLabel ? (
-                    <iframe 
-                      src={`${API_BASE_URL}${templateLabel.pdf_url}#toolbar=0&navpanes=0&scrollbar=0`} 
+                    <iframe
+                      src={`${API_BASE_URL}${templateLabel.pdf_url}#toolbar=0&navpanes=0&scrollbar=0`}
                       className="preview-frame"
                       key={templateLabel.pdf_url}
                       title="Settings Preview"
@@ -441,7 +441,7 @@ function App() {
                     </div>
                   )}
                 </div>
-                <p className="version" style={{marginTop: '1rem', textAlign: 'center'}}>
+                <p className="version" style={{ marginTop: '1rem', textAlign: 'center' }}>
                   This preview shows how a sample label will look with the current settings.
                 </p>
               </div>
