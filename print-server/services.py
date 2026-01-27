@@ -19,70 +19,77 @@ class NokiaLabelService:
 
     def parse_nokia_string(self, raw_string):
         """
-        Extracts 1P (Part), S (Serial), Q (Qty) from raw string.
-        Supports complex strings with Group Separators (ASCII 29).
+        Advanced parser for Nokia strings. 
+        Detects if the scan already has ISO-15434 formatting or if it's raw.
         """
         GS = chr(29)
+        RS = chr(30)
+        EOT = chr(4)
         
-        # Split by GS if it exists, otherwise use regex
-        if GS in raw_string:
-            segments = raw_string.split(GS)
-            parsed = {'part_no': 'UNKNOWN', 'serial_no': 'UNKNOWN', 'qty': '1', 'raw': raw_string}
-            serial_parts = []
-            
-            for seg in segments:
-                if seg.startswith('1P'): parsed['part_no'] = seg[2:]
-                elif seg.startswith('Q'): parsed['qty'] = seg[1:]
-                elif seg.startswith('S'): 
-                    # Start collecting serial parts
-                    serial_parts.append(seg[1:])
-                elif not any(seg.startswith(x) for x in ['1P', 'Q']):
-                    # This is likely a sub-field of the serial number
-                    serial_parts.append(seg)
-            
-            if serial_parts:
-                parsed['serial_no'] = GS.join(serial_parts)
-            return parsed
+        # Clean the string from potential scanner-injected prefixes/suffixes if it's already structured
+        clean_string = raw_string
+        if clean_string.startswith("[)>"):
+            # It's already an ISO string, extract the payload
+            # [)> RS 06 GS payload RS EOT
+            try:
+                clean_string = clean_string.split(GS, 1)[1] # Remove [)>RS06GS
+                clean_string = clean_string.rsplit(RS, 1)[0] # Remove RS EOT
+            except:
+                pass
 
-        # Fallback to Regex for strings without GS
-        part_match = re.search(r'1P(.*?)(?=S|Q|$)', raw_string)
-        serial_match = re.search(r'S(.*?)(?=Q|1P|$)', raw_string)
-        qty_match = re.search(r'Q(.*?)(?=S|1P|$)', raw_string)
-
+        # Now we have a payload that might contain GS
+        segments = clean_string.split(GS)
         parsed = {
-            'part_no': part_match.group(1) if part_match else 'UNKNOWN',
-            'serial_no': serial_match.group(1) if serial_match else 'UNKNOWN',
-            'qty': qty_match.group(1) if qty_match else '1',
-            'raw': raw_string
+            'part_no': 'UNKNOWN', 
+            'serial_no': 'UNKNOWN', 
+            'qty': '1', 
+            'raw': raw_string,
+            'serial_segments': [] # Store the internal segments for reconstruction
         }
+        
+        for seg in segments:
+            if seg.startswith('1P'):
+                parsed['part_no'] = seg[2:]
+            elif seg.startswith('Q'):
+                parsed['qty'] = seg[1:]
+            elif seg.startswith('S'):
+                parsed['serial_segments'].append(seg[1:])
+            else:
+                # If it doesn't have a known prefix, it's a continuation of the previous field (Serial)
+                parsed['serial_segments'].append(seg)
+        
+        # Join serial segments back with GS for the human-readable part, 
+        # but keep them separate for the ISO constructor if needed.
+        if parsed['serial_segments']:
+            parsed['serial_no'] = GS.join(parsed['serial_segments'])
+            
         return parsed
 
     def construct_iso15434_string(self, parsed_data):
         """
-        Injects the hidden ASCII control characters.
-        [)> {RS} 06 {GS} 1P... {GS} S... {GS} Q... {RS} {EOT}
-        Supports internal {GS} markers in the Serial Number field if present.
+        Strict ISO-15434 construction.
+        Format: [)>{RS}06{GS}1P...{GS}S...{GS}...{GS}Q...{RS}{EOT}
         """
-        RS = chr(30) # Record Separator
-        GS = chr(29) # Group Separator
-        EOT = chr(4) # End of Transmission
+        RS = chr(30)
+        GS = chr(29)
+        EOT = chr(4)
 
-        # Format Header
+        # Header
         formatted = f"[)>{RS}06{GS}"
         
-        # Add Data Segments
+        # Part Number Segment
         formatted += f"1P{parsed_data['part_no']}{GS}"
         
-        # Serial No might contain hidden {GS} characters from the scan if we captured them,
-        # or we might need to inject them based on Nokia's specific sub-field logic.
-        # Looking at user feedback, they want: S...{GS}...{GS}...{GS}...
-        # We will preserve any {GS} that are already in the serial_no string (if they were scanned)
-        # and ensure the structure matches the requirement.
-        
-        formatted += f"S{parsed_data['serial_no']}{GS}"
+        # Serial Number Segment (including internal GS markers)
+        if parsed_data.get('serial_segments'):
+            formatted += "S" + GS.join(parsed_data['serial_segments']) + GS
+        else:
+            formatted += f"S{parsed_data['serial_no']}{GS}"
+            
+        # Quantity Segment
         formatted += f"Q{parsed_data['qty']}"
         
-        # Format Footer
+        # Footer
         formatted += f"{RS}{EOT}"
         
         return formatted
