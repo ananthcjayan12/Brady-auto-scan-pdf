@@ -43,6 +43,7 @@ jobs:
         run: |
           # --onedir: Create a folder (less likely to trigger antivirus)
           pyinstaller --onedir --name BradyPrintBridge `
+            --collect-submodules reportlab `
             --add-binary "C:\poppler\poppler-24.02.0\Library\bin\*;poppler" `
             app.py
 
