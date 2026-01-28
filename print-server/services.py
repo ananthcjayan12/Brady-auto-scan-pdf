@@ -195,7 +195,8 @@ class PrintService:
         try:
             if system == 'Windows':
                 import win32print
-                printers = [p[2] for p in win32print.EnumPrinters(win32print.PRINTER_ENUM_LOCAL | win32print.PRINTER_ENUM_CONNECTIONS)]
+                for printer in win32print.EnumPrinters(win32print.PRINTER_ENUM_LOCAL | win32print.PRINTER_ENUM_CONNECTIONS):
+                    printers.append(printer[2])
                 default_printer = win32print.GetDefaultPrinter()
             else:
                 # Mac/Linux Logic
@@ -216,19 +217,53 @@ class PrintService:
         
         try:
             if system == 'Windows':
-                # Reusing your Powershell logic as it's cleaner for PDFs on Windows
-                # unless you want to use the win32print GDI method, but Powershell is easier for files
+                # Direct GDI Printing to avoid "No application associated" error
+                import win32print
+                import win32ui
+                import win32con
+                from PIL import Image, ImageWin
+                from pdf2image import convert_from_path
+
                 if not printer_name:
-                    import win32print
                     printer_name = win32print.GetDefaultPrinter()
 
-                cmd = [
-                    'powershell', 
-                    '-Command', 
-                    f'Start-Process -FilePath "{file_path}" -Verb PrintTo -ArgumentList "{printer_name}" -PassThru -Wait'
-                ]
-                subprocess.run(cmd, check=True)
-                return True, "Sent to Windows Printer"
+                # Convert PDF to images (one per page)
+                # poppler_path can be specified if needed, but it should be in PATH
+                images = convert_from_path(file_path, dpi=300)
+
+                for i, image in enumerate(images):
+                    if image.mode != 'RGB':
+                        image = image.convert('RGB')
+                        
+                    hDC = win32ui.CreateDC()
+                    hDC.CreatePrinterDC(printer_name)
+                    
+                    # Get printer resolution
+                    printable_area = (
+                        hDC.GetDeviceCaps(win32con.HORZRES),
+                        hDC.GetDeviceCaps(win32con.VERTRES)
+                    )
+                    
+                    # Calculate scaling to fit the printable area
+                    ratio = min(printable_area[0] / image.size[0], printable_area[1] / image.size[1])
+                    scaled_size = (int(image.size[0] * ratio), int(image.size[1] * ratio))
+                    
+                    # Center the image
+                    x = (printable_area[0] - scaled_size[0]) // 2
+                    y = (printable_area[1] - scaled_size[1]) // 2
+                    
+                    hDC.StartDoc(os.path.basename(file_path))
+                    hDC.StartPage()
+                    
+                    # Draw image to printer DC
+                    dib = ImageWin.Dib(image.resize(scaled_size, Image.Resampling.LANCZOS))
+                    dib.draw(hDC.GetHandleOutput(), (x, y, x + scaled_size[0], y + scaled_size[1]))
+                    
+                    hDC.EndPage()
+                    hDC.EndDoc()
+                    hDC.DeleteDC()
+
+                return True, f"Printed {len(images)} page(s) to {printer_name}"
             
             else:
                 # Mac/Linux LPR
@@ -240,4 +275,5 @@ class PrintService:
                 return True, "Sent to Unix Printer"
 
         except Exception as e:
+            logger.error(f"Printing error: {e}")
             return False, str(e)
