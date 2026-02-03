@@ -4,6 +4,7 @@ import re
 import uuid
 import platform
 import subprocess
+import sys
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 from reportlab.graphics.barcode import code128
@@ -211,62 +212,35 @@ class PrintService:
 
     def print_file(self, file_path, printer_name=None):
         """
-        Sends the generated PDF to the printer.
+        Sends the generated PDF directly to the printer using SumatraPDF on Windows
+        or LPR on Unix systems.
         """
         system = platform.system()
-        
         try:
             if system == 'Windows':
-                # Direct GDI Printing to avoid "No application associated" error
-                import win32print
-                import win32ui
-                import win32con
-                from PIL import Image, ImageWin
-                from pdf2image import convert_from_path
+                # Determine path for bundled SumatraPDF
+                if hasattr(sys, '_MEIPASS'):
+                    # Path when running as an EXE
+                    sumatra_path = os.path.join(sys._MEIPASS, 'bin', 'sumatra', 'SumatraPDF.exe')
+                else:
+                    # Path for local development
+                    sumatra_path = "SumatraPDF.exe"
 
                 if not printer_name:
+                    import win32print
                     printer_name = win32print.GetDefaultPrinter()
 
-                # Convert PDF to images (one per page)
-                # poppler_path can be specified if needed, but it should be in PATH
-                images = convert_from_path(file_path, dpi=300)
-
-                for i, image in enumerate(images):
-                    if image.mode != 'RGB':
-                        image = image.convert('RGB')
-                        
-                    hDC = win32ui.CreateDC()
-                    hDC.CreatePrinterDC(printer_name)
-                    
-                    # Get printer resolution
-                    printable_area = (
-                        hDC.GetDeviceCaps(win32con.HORZRES),
-                        hDC.GetDeviceCaps(win32con.VERTRES)
-                    )
-                    
-                    # Calculate scaling to fit the printable area
-                    ratio = min(printable_area[0] / image.size[0], printable_area[1] / image.size[1])
-                    scaled_size = (int(image.size[0] * ratio), int(image.size[1] * ratio))
-                    
-                    # Center the image
-                    x = (printable_area[0] - scaled_size[0]) // 2
-                    y = (printable_area[1] - scaled_size[1]) // 2
-                    
-                    hDC.StartDoc(os.path.basename(file_path))
-                    hDC.StartPage()
-                    
-                    # Draw image to printer DC
-                    dib = ImageWin.Dib(image.resize(scaled_size, Image.Resampling.LANCZOS))
-                    dib.draw(hDC.GetHandleOutput(), (x, y, x + scaled_size[0], y + scaled_size[1]))
-                    
-                    hDC.EndPage()
-                    hDC.EndDoc()
-                    hDC.DeleteDC()
-
-                return True, f"Printed {len(images)} page(s) to {printer_name}"
+                # Arguments: 
+                # -print-to: Target printer
+                # -print-settings "fit": Automatically scales label to match paper size
+                cmd = [sumatra_path, "-print-to", printer_name, "-print-settings", "fit", file_path]
+                
+                logger.info(f"Executing Windows print: {' '.join(cmd)}")
+                subprocess.run(cmd, check=True)
+                return True, f"Printed to {printer_name} via SumatraPDF"
             
             else:
-                # Mac/Linux LPR
+                # Mac/Linux Logic
                 cmd = ['lpr']
                 if printer_name:
                     cmd.extend(['-P', printer_name])

@@ -25,26 +25,25 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Install Poppler (for pdf2image)
+      - name: Download SumatraPDF
         run: |
-          # Download poppler for Windows
-          $popplerUrl = "https://github.com/oschwartz10612/poppler-windows/releases/download/v24.02.0-0/Release-24.02.0-0.zip"
-          Invoke-WebRequest -Uri $popplerUrl -OutFile poppler.zip
-          Expand-Archive -Path poppler.zip -DestinationPath C:\poppler
-          # Add to PATH for this session
-          $env:PATH = "C:\poppler\poppler-24.02.0\Library\bin;" + $env:PATH
+          $sumatraUrl = "https://www.sumatrapdfreader.org/dl/rel/3.5.2/SumatraPDF-3.5.2-64.zip"
+          Invoke-WebRequest -Uri $sumatraUrl -OutFile sumatra.zip
+          Expand-Archive -Path sumatra.zip -DestinationPath C:\sumatra-temp
+          # The zip contains SumatraPDF-3.5.2-64.exe, rename it to SumatraPDF.exe
+          New-Item -ItemType Directory -Force -Path C:\sumatra
+          Copy-Item C:\sumatra-temp\SumatraPDF-3.5.2-64.exe -Destination C:\sumatra\SumatraPDF.exe
           # Verify
-          pdftoppm -v
+          Write-Host "SumatraPDF.exe ready at:"
+          Get-Item C:\sumatra\SumatraPDF.exe | Select-Object FullName, Length
 
       - name: Build EXE (Folder Mode)
         working-directory: ./print-server
-        env:
-          PATH: C:\poppler\poppler-24.02.0\Library\bin;${{ env.PATH }}
         run: |
           # --onedir: Create a folder (less likely to trigger antivirus)
           pyinstaller --onedir --name BradyPrintBridge `
             --collect-submodules reportlab `
-            --add-binary "C:\poppler\poppler-24.02.0\Library\bin\*;poppler" `
+            --add-binary "C:\sumatra\SumatraPDF.exe;bin/sumatra" `
             app.py
 
       - name: Create Zip Bundle

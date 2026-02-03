@@ -1,5 +1,4 @@
 flask
 flask-cors
 reportlab
-pdf2image
-pypiwin32; platform_system == 'Windows'
+pywin32; platform_system == 'Windows'
