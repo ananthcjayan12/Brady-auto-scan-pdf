@@ -212,32 +212,90 @@ class PrintService:
 
     def print_file(self, file_path, printer_name=None):
         """
-        Sends the generated PDF directly to the printer using SumatraPDF on Windows
-        or LPR on Unix systems.
+        Sends the generated PDF directly to the printer with precise control over
+        paper size and orientation using win32print APIs.
         """
         system = platform.system()
         try:
             if system == 'Windows':
-                # Determine path for bundled SumatraPDF
-                if hasattr(sys, '_MEIPASS'):
-                    # Path when running as an EXE
-                    sumatra_path = os.path.join(sys._MEIPASS, 'bin', 'sumatra', 'SumatraPDF.exe')
-                else:
-                    # Path for local development
-                    sumatra_path = "SumatraPDF.exe"
+                import win32print
+                import win32ui
+                import win32con
+                from PIL import Image
+                import fitz  # PyMuPDF
 
                 if not printer_name:
-                    import win32print
                     printer_name = win32print.GetDefaultPrinter()
 
-                # Arguments: 
-                # -print-to: Target printer
-                # -print-settings "fit": Automatically scales label to match paper size
-                cmd = [sumatra_path, "-print-to", printer_name, "-print-settings", "fit", file_path]
+                # Convert PDF to image using PyMuPDF (no Poppler needed!)
+                pdf_document = fitz.open(file_path)
+                page = pdf_document[0]  # Get first page
                 
-                logger.info(f"Executing Windows print: {' '.join(cmd)}")
-                subprocess.run(cmd, check=True)
-                return True, f"Printed to {printer_name} via SumatraPDF"
+                # Render at high DPI for quality
+                mat = fitz.Matrix(300/72, 300/72)  # 300 DPI
+                pix = page.get_pixmap(matrix=mat)
+                
+                # Convert to PIL Image
+                img_data = pix.tobytes("ppm")
+                image = Image.open(BytesIO(img_data))
+                pdf_document.close()
+                
+                if image.mode != 'RGB':
+                    image = image.convert('RGB')
+                
+                # Get printer device context
+                hDC = win32ui.CreateDC()
+                hDC.CreatePrinterDC(printer_name)
+                
+                # Get printer handle for configuration
+                printer_handle = win32print.OpenPrinter(printer_name)
+                
+                try:
+                    # Get current printer settings
+                    properties = win32print.GetPrinter(printer_handle, 2)
+                    pDevMode = properties["pDevMode"]
+                    
+                    # Set custom paper size: 100mm x 35mm (landscape label)
+                    # Windows uses 0.1mm units, so 100mm = 1000, 35mm = 350
+                    pDevMode.PaperWidth = 1000   # 100mm in 0.1mm units
+                    pDevMode.PaperLength = 350   # 35mm in 0.1mm units
+                    pDevMode.PaperSize = win32con.DMPAPER_USER  # Custom size
+                    pDevMode.Orientation = win32con.DMORIENT_LANDSCAPE
+                    
+                    # Apply settings
+                    win32print.SetPrinter(printer_handle, 2, properties, 0)
+                    
+                finally:
+                    win32print.ClosePrinter(printer_handle)
+                
+                # Get printable area with our custom settings
+                printable_area = (
+                    hDC.GetDeviceCaps(win32con.HORZRES),
+                    hDC.GetDeviceCaps(win32con.VERTRES)
+                )
+                
+                # Scale image to fit printable area
+                ratio = min(printable_area[0] / image.size[0], printable_area[1] / image.size[1])
+                scaled_size = (int(image.size[0] * ratio), int(image.size[1] * ratio))
+                
+                # Center the image
+                x = (printable_area[0] - scaled_size[0]) // 2
+                y = (printable_area[1] - scaled_size[1]) // 2
+                
+                # Start print job
+                hDC.StartDoc(os.path.basename(file_path))
+                hDC.StartPage()
+                
+                # Draw image to printer
+                from PIL import ImageWin
+                dib = ImageWin.Dib(image.resize(scaled_size, Image.Resampling.LANCZOS))
+                dib.draw(hDC.GetHandleOutput(), (x, y, x + scaled_size[0], y + scaled_size[1]))
+                
+                hDC.EndPage()
+                hDC.EndDoc()
+                hDC.DeleteDC()
+
+                return True, f"Printed to {printer_name} with 100x35mm label settings"
             
             else:
                 # Mac/Linux Logic
