@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 class NokiaLabelService:
     def __init__(self, output_folder):
         self.output_folder = output_folder
+        logger.info("--- NokiaLabelService Initialized (Direct Printing Version v2.2) ---")
 
     def parse_nokia_string(self, raw_string):
         """
@@ -214,84 +215,31 @@ class PrintService:
     def print_file(self, file_path, printer_name=None):
         """
         Sends the PDF to the printer using the printer's existing configuration.
-        Works without admin privileges by respecting the printer's current settings.
+        Works without admin privileges by using ShellExecute.
         """
         system = platform.system()
         try:
             if system == 'Windows':
                 import win32print
-                import win32ui
-                import win32con
-                from PIL import Image
-                import fitz  # PyMuPDF
+                import win32api
 
                 if not printer_name:
                     printer_name = win32print.GetDefaultPrinter()
 
                 logger.info(f"Starting print job to: {printer_name}")
 
-                # Convert PDF to high-quality image
-                pdf_document = fitz.open(file_path)
-                page = pdf_document[0]
-                
-                # Render at 300 DPI for crisp labels
-                mat = fitz.Matrix(300/72, 300/72)
-                pix = page.get_pixmap(matrix=mat)
-                
-                # Convert to PIL Image
-                img_data = pix.tobytes("ppm")
-                image = Image.open(BytesIO(img_data))
-                pdf_document.close()
-                
-                if image.mode != 'RGB':
-                    image = image.convert('RGB')
-                
-                logger.info(f"PDF converted to image: {image.size[0]}x{image.size[1]} pixels")
-                
-                # Create printer device context
-                hDC = win32ui.CreateDC()
-                hDC.CreatePrinterDC(printer_name)
-                
-                # Get the printer's current printable area
-                # This respects whatever paper size is configured in the printer driver
-                printable_width = hDC.GetDeviceCaps(win32con.HORZRES)
-                printable_height = hDC.GetDeviceCaps(win32con.VERTRES)
-                
-                logger.info(f"Printer printable area: {printable_width}x{printable_height} pixels")
-                
-                # Calculate scaling to fit the label on the configured paper
-                # Maintain aspect ratio
-                scale_x = printable_width / image.size[0]
-                scale_y = printable_height / image.size[1]
-                scale = min(scale_x, scale_y)
-                
-                # Calculate final size
-                final_width = int(image.size[0] * scale)
-                final_height = int(image.size[1] * scale)
-                
-                # Center the label on the page
-                x_offset = (printable_width - final_width) // 2
-                y_offset = (printable_height - final_height) // 2
-                
-                logger.info(f"Printing at: {final_width}x{final_height} pixels, offset: ({x_offset}, {y_offset})")
-                
-                # Start the print job
-                hDC.StartDoc(os.path.basename(file_path))
-                hDC.StartPage()
-                
-                # Resize image with high-quality resampling
-                resized_image = image.resize((final_width, final_height), Image.Resampling.LANCZOS)
-                
-                # Draw to printer
-                from PIL import ImageWin
-                dib = ImageWin.Dib(resized_image)
-                dib.draw(hDC.GetHandleOutput(), (x_offset, y_offset, x_offset + final_width, y_offset + final_height))
-                
-                hDC.EndPage()
-                hDC.EndDoc()
-                hDC.DeleteDC()
+                # Use ShellExecute to print the PDF directly
+                # This respects the printer's existing settings and doesn't require admin privileges
+                win32api.ShellExecute(
+                    0,
+                    "print",
+                    file_path,
+                    f'/d:"{printer_name}"',
+                    ".",
+                    0
+                )
 
-                logger.info(f"Print job completed successfully")
+                logger.info(f"Print job sent successfully to {printer_name}")
                 return True, f"Printed to {printer_name}"
             
             else:
