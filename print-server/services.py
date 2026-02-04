@@ -5,6 +5,7 @@ import uuid
 import platform
 import subprocess
 import sys
+from io import BytesIO
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 from reportlab.graphics.barcode import code128
