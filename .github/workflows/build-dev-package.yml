@@ -1,0 +1,270 @@
+name: Build Dev Package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-dev-package:
+    name: Build Development Package
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create Package Structure
+        working-directory: ./print-server
+        run: |
+          # Create the dev package directory
+          New-Item -ItemType Directory -Force -Path "../BradyPrintServer-Dev"
+          
+          # Copy Python files
+          Copy-Item -Path "app.py" -Destination "../BradyPrintServer-Dev/"
+          Copy-Item -Path "services.py" -Destination "../BradyPrintServer-Dev/"
+          Copy-Item -Path "requirements.txt" -Destination "../BradyPrintServer-Dev/"
+          
+          # Create temp_labels directory
+          New-Item -ItemType Directory -Force -Path "../BradyPrintServer-Dev/temp_labels"
+
+      - name: Create Setup and Run Batch File
+        working-directory: ./BradyPrintServer-Dev
+        run: |
+          @'
+          @echo off
+          echo ========================================
+          echo Brady Print Server - Development Mode
+          echo ========================================
+          echo.
+          
+          REM Check if Python is installed
+          python --version >nul 2>&1
+          if errorlevel 1 (
+              echo ERROR: Python is not installed or not in PATH!
+              echo Please install Python 3.8 or higher from https://www.python.org/
+              echo Make sure to check "Add Python to PATH" during installation.
+              pause
+              exit /b 1
+          )
+          
+          echo [1/3] Checking Python installation...
+          python --version
+          echo.
+          
+          REM Check if virtual environment exists
+          if not exist "venv\" (
+              echo [2/3] Creating virtual environment...
+              python -m venv venv
+              if errorlevel 1 (
+                  echo ERROR: Failed to create virtual environment!
+                  pause
+                  exit /b 1
+              )
+              echo Virtual environment created successfully.
+              echo.
+              
+              echo [3/3] Installing dependencies...
+              call venv\Scripts\activate.bat
+              pip install --upgrade pip
+              pip install -r requirements.txt
+              if errorlevel 1 (
+                  echo ERROR: Failed to install dependencies!
+                  pause
+                  exit /b 1
+              )
+              echo Dependencies installed successfully.
+              echo.
+          ) else (
+              echo [2/3] Virtual environment already exists.
+              echo [3/3] Activating virtual environment...
+              call venv\Scripts\activate.bat
+              echo.
+          )
+          
+          echo ========================================
+          echo Starting Brady Print Server...
+          echo ========================================
+          echo Server will be available at: http://localhost:5001
+          echo Press Ctrl+C to stop the server
+          echo.
+          
+          REM Run the Flask app
+          python app.py
+          
+          REM If the server stops, pause so user can see any errors
+          if errorlevel 1 (
+              echo.
+              echo ========================================
+              echo Server stopped with errors!
+              echo ========================================
+              pause
+          )
+          '@ | Out-File -FilePath "run-server.bat" -Encoding ASCII
+
+      - name: Create README
+        working-directory: ./BradyPrintServer-Dev
+        run: |
+          @'
+          # Brady Print Server - Development Package
+          
+          This is a portable development package that allows you to run and modify the Brady Print Server without building an executable.
+          
+          ## Requirements
+          
+          - Windows 10 or later
+          - Python 3.8 or higher (download from https://www.python.org/)
+            - **Important**: During Python installation, check "Add Python to PATH"
+          
+          ## Quick Start
+          
+          1. **Extract this folder** to any location on your computer
+          2. **Double-click `run-server.bat`**
+          3. The first run will:
+             - Create a virtual environment
+             - Install all required dependencies
+             - Start the server
+          4. Server will be available at `http://localhost:5001`
+          
+          ## What Happens on First Run?
+          
+          The batch file will automatically:
+          - ✅ Check if Python is installed
+          - ✅ Create a virtual environment (`venv` folder)
+          - ✅ Install all dependencies from `requirements.txt`
+          - ✅ Start the Flask server
+          
+          ## Subsequent Runs
+          
+          Just double-click `run-server.bat` again. It will:
+          - Use the existing virtual environment
+          - Start the server immediately (no reinstallation needed)
+          
+          ## Making Changes
+          
+          You can edit the following files to customize the server:
+          
+          - **`app.py`** - Main Flask application and API endpoints
+          - **`services.py`** - Label generation and printing logic
+          - **`requirements.txt`** - Python dependencies
+          
+          After making changes:
+          1. Stop the server (Ctrl+C in the terminal)
+          2. Run `run-server.bat` again to test your changes
+          
+          ## Reinstalling Dependencies
+          
+          If you modify `requirements.txt`:
+          1. Delete the `venv` folder
+          2. Run `run-server.bat` again (it will recreate everything)
+          
+          ## Troubleshooting
+          
+          ### "Python is not installed or not in PATH"
+          - Install Python from https://www.python.org/
+          - During installation, check "Add Python to PATH"
+          - Restart your computer after installation
+          
+          ### "Failed to install dependencies"
+          - Make sure you have internet connection
+          - Try deleting the `venv` folder and running again
+          - Some packages (like `pywin32`) require Visual C++ redistributables
+          
+          ### Server won't start
+          - Check if port 5001 is already in use
+          - Look for error messages in the console window
+          - Check the `temp_labels` folder has write permissions
+          
+          ## Files in This Package
+          
+          ```
+          BradyPrintServer-Dev/
+          ├── run-server.bat       # Main launcher script
+          ├── app.py               # Flask application
+          ├── services.py          # Core business logic
+          ├── requirements.txt     # Python dependencies
+          ├── temp_labels/         # Generated PDF labels stored here
+          ├── venv/                # Virtual environment (created on first run)
+          └── README.md            # This file
+          ```
+          
+          ## API Endpoints
+          
+          Once running, the server provides these endpoints:
+          
+          - `GET /health` - Health check
+          - `GET /api/printers` - List available printers
+          - `POST /api/generate-label` - Generate a label PDF
+          - `POST /api/print-label` - Print a generated label
+          - `POST /api/generate-and-print` - Generate and print in one step
+          
+          ## Support
+          
+          For issues or questions, check the project repository or contact your administrator.
+          '@ | Out-File -FilePath "README.md" -Encoding UTF8
+
+      - name: Create Zip Bundle
+        run: |
+          Compress-Archive -Path BradyPrintServer-Dev -DestinationPath BradyPrintServer-Dev.zip
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BradyPrintServer-Dev-Package
+          path: BradyPrintServer-Dev.zip
+
+  create-release:
+    needs: [build-dev-package]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: BradyPrintServer-Dev-Package
+          path: ./artifacts/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: dev-v${{ github.run_number }}
+          name: Development Package v${{ github.run_number }}
+          body: |
+            ## 🛠️ Brady Print Server - Development Package
+            
+            This is a **portable development package** that allows you to run and modify the server without building an executable.
+            
+            ### 📦 What's Included?
+            
+            - ✅ All source code (`app.py`, `services.py`)
+            - ✅ Automatic environment setup script
+            - ✅ Batch file for easy launching
+            - ✅ Full README with instructions
+            
+            ### 🚀 Quick Start
+            
+            1. **Download** `BradyPrintServer-Dev.zip`
+            2. **Extract** to any folder
+            3. **Double-click** `run-server.bat`
+            4. First run will automatically install everything!
+            
+            ### 💡 Perfect For:
+            
+            - Testing changes quickly
+            - Debugging issues
+            - Customizing the server
+            - Learning how it works
+            
+            ### ⚙️ Requirements
+            
+            - Windows 10 or later
+            - Python 3.8+ (must be in PATH)
+            
+            ---
+            
+            **Note**: For production use, download the compiled executable from the main releases.
+          files: |
+            ./artifacts/*.zip
+          draft: false
+          prerelease: true
