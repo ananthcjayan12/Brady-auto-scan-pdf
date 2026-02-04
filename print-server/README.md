@@ -136,12 +136,24 @@ To test:
 
 ## 📝 Dependencies
 
-- **Flask** - Web framework
-- **Flask-CORS** - Cross-origin resource sharing
-- **ReportLab** - PDF generation
-- **PyMuPDF** - PDF manipulation (not used in current version)
-- **Pillow** - Image processing (not used in current version)
-- **pywin32** - Windows API access (Windows only)
+- **Flask** - Web framework for the API server
+- **Flask-CORS** - Cross-origin resource sharing support
+- **ReportLab** - PDF generation and barcode creation
+- **PyMuPDF (fitz)** - PDF to image conversion for printing
+- **Pillow** - Image processing and manipulation
+- **pywin32** - Windows API access for GDI printing (Windows only)
+  - Includes: `win32print`, `win32ui`, `win32con`, `PIL.ImageWin`
+  - Required for direct printer access without admin privileges
+
+### Why These Dependencies?
+
+The printing system works by:
+1. **ReportLab** creates Nokia labels with barcodes and DataMatrix
+2. **PyMuPDF** converts the PDF to a high-quality image (300 DPI)
+3. **Pillow** processes and scales the image
+4. **pywin32** sends the image directly to the printer using Windows GDI
+
+This approach avoids needing admin privileges and works with all printer types.
 
 ## 🔐 Security Notes
 

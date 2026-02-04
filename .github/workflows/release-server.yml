@@ -29,9 +29,13 @@ jobs:
         working-directory: ./print-server
         run: |
           # --onedir: Create a folder (less likely to trigger antivirus)
-          # Using PyMuPDF for PDF conversion (no external dependencies needed)
+          # Include Windows printing modules and PIL ImageWin
           pyinstaller --onedir --name BradyPrintBridge `
             --collect-submodules reportlab `
+            --hidden-import win32print `
+            --hidden-import win32ui `
+            --hidden-import win32con `
+            --hidden-import PIL.ImageWin `
             app.py
 
       - name: Create Zip Bundle

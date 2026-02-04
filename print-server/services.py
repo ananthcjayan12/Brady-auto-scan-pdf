@@ -214,32 +214,85 @@ class PrintService:
 
     def print_file(self, file_path, printer_name=None):
         """
-        Sends the PDF to the printer using the printer's existing configuration.
-        Works without admin privileges by using ShellExecute.
+        Sends the PDF to the printer using GDI printing.
+        Works without admin privileges by using win32ui CreateDC.
         """
         system = platform.system()
         try:
             if system == 'Windows':
                 import win32print
-                import win32api
+                import win32ui
+                import win32con
+                from PIL import Image, ImageWin
+                import fitz  # PyMuPDF
 
                 if not printer_name:
                     printer_name = win32print.GetDefaultPrinter()
 
                 logger.info(f"Starting print job to: {printer_name}")
 
-                # Use ShellExecute to print the PDF directly
-                # This respects the printer's existing settings and doesn't require admin privileges
-                win32api.ShellExecute(
-                    0,
-                    "print",
-                    file_path,
-                    f'/d:"{printer_name}"',
-                    ".",
-                    0
+                # Convert PDF to Image
+                pdf_document = fitz.open(file_path)
+                page = pdf_document[0]
+                
+                # Render at 300 DPI for crisp labels
+                mat = fitz.Matrix(300/72, 300/72)
+                pix = page.get_pixmap(matrix=mat)
+                
+                # Convert to PIL Image
+                img_data = pix.tobytes("ppm")
+                image = Image.open(BytesIO(img_data))
+                pdf_document.close()
+                
+                if image.mode != 'RGB':
+                    image = image.convert('RGB')
+                
+                logger.info(f"PDF converted to image: {image.size[0]}x{image.size[1]} pixels")
+                
+                # GDI Printing using Device Context
+                hDC = win32ui.CreateDC()
+                hDC.CreatePrinterDC(printer_name)
+                
+                # Get printable area (this just reads, doesn't modify settings)
+                printable_area = (
+                    hDC.GetDeviceCaps(win32con.HORZRES), 
+                    hDC.GetDeviceCaps(win32con.VERTRES)
                 )
+                
+                logger.info(f"Printer printable area: {printable_area[0]}x{printable_area[1]} pixels")
+                
+                # Calculate scaling to fit the label
+                ratio = min(
+                    printable_area[0] / image.size[0], 
+                    printable_area[1] / image.size[1]
+                )
+                scaled_size = (
+                    int(image.size[0] * ratio), 
+                    int(image.size[1] * ratio)
+                )
+                
+                # Resize image
+                bmp = image.resize(scaled_size, Image.Resampling.LANCZOS)
+                dib = ImageWin.Dib(bmp)
+                
+                # Start print job
+                hDC.StartDoc(os.path.basename(file_path))
+                hDC.StartPage()
+                
+                # Center the label on the page
+                x = (printable_area[0] - scaled_size[0]) // 2
+                y = (printable_area[1] - scaled_size[1]) // 2
+                
+                logger.info(f"Printing at: {scaled_size[0]}x{scaled_size[1]} pixels, offset: ({x}, {y})")
+                
+                # Draw to printer
+                dib.draw(hDC.GetHandleOutput(), (x, y, x + scaled_size[0], y + scaled_size[1]))
+                
+                hDC.EndPage()
+                hDC.EndDoc()
+                hDC.DeleteDC()
 
-                logger.info(f"Print job sent successfully to {printer_name}")
+                logger.info(f"Print job completed successfully")
                 return True, f"Printed to {printer_name}"
             
             else:
