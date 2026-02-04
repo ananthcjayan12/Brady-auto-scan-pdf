@@ -213,8 +213,8 @@ class PrintService:
 
     def print_file(self, file_path, printer_name=None):
         """
-        Sends the generated PDF directly to the printer with precise control over
-        paper size and orientation using win32print APIs.
+        Sends the PDF to the printer using the printer's existing configuration.
+        Works without admin privileges by respecting the printer's current settings.
         """
         system = platform.system()
         try:
@@ -228,12 +228,14 @@ class PrintService:
                 if not printer_name:
                     printer_name = win32print.GetDefaultPrinter()
 
-                # Convert PDF to image using PyMuPDF (no Poppler needed!)
+                logger.info(f"Starting print job to: {printer_name}")
+
+                # Convert PDF to high-quality image
                 pdf_document = fitz.open(file_path)
-                page = pdf_document[0]  # Get first page
+                page = pdf_document[0]
                 
-                # Render at high DPI for quality
-                mat = fitz.Matrix(300/72, 300/72)  # 300 DPI
+                # Render at 300 DPI for crisp labels
+                mat = fitz.Matrix(300/72, 300/72)
                 pix = page.get_pixmap(matrix=mat)
                 
                 # Convert to PIL Image
@@ -244,59 +246,53 @@ class PrintService:
                 if image.mode != 'RGB':
                     image = image.convert('RGB')
                 
-                # Get printer device context
+                logger.info(f"PDF converted to image: {image.size[0]}x{image.size[1]} pixels")
+                
+                # Create printer device context
                 hDC = win32ui.CreateDC()
                 hDC.CreatePrinterDC(printer_name)
                 
-                # Get printer handle for configuration
-                printer_handle = win32print.OpenPrinter(printer_name)
+                # Get the printer's current printable area
+                # This respects whatever paper size is configured in the printer driver
+                printable_width = hDC.GetDeviceCaps(win32con.HORZRES)
+                printable_height = hDC.GetDeviceCaps(win32con.VERTRES)
                 
-                try:
-                    # Get current printer settings
-                    properties = win32print.GetPrinter(printer_handle, 2)
-                    pDevMode = properties["pDevMode"]
-                    
-                    # Set custom paper size: 100mm x 35mm (landscape label)
-                    # Windows uses 0.1mm units, so 100mm = 1000, 35mm = 350
-                    pDevMode.PaperWidth = 1000   # 100mm in 0.1mm units
-                    pDevMode.PaperLength = 350   # 35mm in 0.1mm units
-                    pDevMode.PaperSize = win32con.DMPAPER_USER  # Custom size
-                    pDevMode.Orientation = win32con.DMORIENT_LANDSCAPE
-                    
-                    # Apply settings
-                    win32print.SetPrinter(printer_handle, 2, properties, 0)
-                    
-                finally:
-                    win32print.ClosePrinter(printer_handle)
+                logger.info(f"Printer printable area: {printable_width}x{printable_height} pixels")
                 
-                # Get printable area with our custom settings
-                printable_area = (
-                    hDC.GetDeviceCaps(win32con.HORZRES),
-                    hDC.GetDeviceCaps(win32con.VERTRES)
-                )
+                # Calculate scaling to fit the label on the configured paper
+                # Maintain aspect ratio
+                scale_x = printable_width / image.size[0]
+                scale_y = printable_height / image.size[1]
+                scale = min(scale_x, scale_y)
                 
-                # Scale image to fit printable area
-                ratio = min(printable_area[0] / image.size[0], printable_area[1] / image.size[1])
-                scaled_size = (int(image.size[0] * ratio), int(image.size[1] * ratio))
+                # Calculate final size
+                final_width = int(image.size[0] * scale)
+                final_height = int(image.size[1] * scale)
                 
-                # Center the image
-                x = (printable_area[0] - scaled_size[0]) // 2
-                y = (printable_area[1] - scaled_size[1]) // 2
+                # Center the label on the page
+                x_offset = (printable_width - final_width) // 2
+                y_offset = (printable_height - final_height) // 2
                 
-                # Start print job
+                logger.info(f"Printing at: {final_width}x{final_height} pixels, offset: ({x_offset}, {y_offset})")
+                
+                # Start the print job
                 hDC.StartDoc(os.path.basename(file_path))
                 hDC.StartPage()
                 
-                # Draw image to printer
+                # Resize image with high-quality resampling
+                resized_image = image.resize((final_width, final_height), Image.Resampling.LANCZOS)
+                
+                # Draw to printer
                 from PIL import ImageWin
-                dib = ImageWin.Dib(image.resize(scaled_size, Image.Resampling.LANCZOS))
-                dib.draw(hDC.GetHandleOutput(), (x, y, x + scaled_size[0], y + scaled_size[1]))
+                dib = ImageWin.Dib(resized_image)
+                dib.draw(hDC.GetHandleOutput(), (x_offset, y_offset, x_offset + final_width, y_offset + final_height))
                 
                 hDC.EndPage()
                 hDC.EndDoc()
                 hDC.DeleteDC()
 
-                return True, f"Printed to {printer_name} with 100x35mm label settings"
+                logger.info(f"Print job completed successfully")
+                return True, f"Printed to {printer_name}"
             
             else:
                 # Mac/Linux Logic
@@ -308,5 +304,5 @@ class PrintService:
                 return True, "Sent to Unix Printer"
 
         except Exception as e:
-            logger.error(f"Printing error: {e}")
+            logger.error(f"Printing error: {e}", exc_info=True)
             return False, str(e)
