@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class NokiaLabelService:
     def __init__(self, output_folder):
         self.output_folder = output_folder
-        logger.info("--- NokiaLabelService Initialized (Direct Printing Version v2.2) ---")
+        logger.info("--- NokiaLabelService Initialized (Direct Printing Version v2.4) ---")
 
     def parse_nokia_string(self, raw_string):
         """
@@ -29,28 +29,70 @@ class NokiaLabelService:
         RS = chr(30)
         EOT = chr(4)
         
-        # Clean the string from potential scanner-injected prefixes/suffixes if it's already structured
-        clean_string = raw_string
+        # Clean potential whitespace
+        clean_string = raw_string.strip()
+        
+        # Handle ISO-15434 wrapping [)>RS06GS...RSEOT
         if clean_string.startswith("[)>"):
-            # It's already an ISO string, extract the payload
-            # [)> RS 06 GS payload RS EOT
             try:
-                clean_string = clean_string.split(GS, 1)[1] # Remove [)>RS06GS
-                clean_string = clean_string.rsplit(RS, 1)[0] # Remove RS EOT
+                # Find the first GS to get to the payload
+                if GS in clean_string:
+                    clean_string = clean_string.split(GS, 1)[1]
+                # Remove footer
+                if RS in clean_string:
+                    clean_string = clean_string.split(RS, 1)[0]
+                elif EOT in clean_string:
+                    clean_string = clean_string.split(EOT, 1)[0]
             except:
                 pass
 
-        # Now we have a payload that might contain GS
+        # Now we have a payload that contains GS or other delimiter
+        # Sometimes scanners replace GS with other characters or just omit it
+        # Let's try to find common prefixes (1P, S, Q) if GS is missing
+        if GS not in clean_string:
+            # Simple heuristic: look for 1P, S, Q
+            parsed = {
+                'part_no': 'UNKNOWN', 
+                'serial_no': 'UNKNOWN', 
+                'qty': '1', 
+                'raw': raw_string,
+                'serial_segments': []
+            }
+            
+            # Split by common prefixes to isolate fields
+            # We look for 1P, S, Q as delimiters
+            # Example: 061P475773A.102SUK2545A0510Q1
+            
+            # 1. Extract Part Number (Starts with 1P, ends before S or Q)
+            p_match = re.search(r'1P(.*?)(?=S|Q|$)', clean_string)
+            if p_match: parsed['part_no'] = p_match.group(1).strip()
+            
+            # 2. Extract Serial Number (Starts with S, ends before Q or EOT/RS)
+            s_match = re.search(r'S(.*?)(?=Q|$)', clean_string)
+            if s_match: 
+                val = s_match.group(1).strip()
+                parsed['serial_no'] = val
+                parsed['serial_segments'] = [val]
+                
+            # 3. Extract Quantity (Starts with Q, ends before next prefix or end)
+            q_match = re.search(r'Q(\d+)', clean_string)
+            if q_match: parsed['qty'] = q_match.group(1)
+            
+            return parsed
+
         segments = clean_string.split(GS)
         parsed = {
             'part_no': 'UNKNOWN', 
             'serial_no': 'UNKNOWN', 
             'qty': '1', 
             'raw': raw_string,
-            'serial_segments': [] # Store the internal segments for reconstruction
+            'serial_segments': []
         }
         
         for seg in segments:
+            seg = seg.strip()
+            if not seg: continue
+            
             if seg.startswith('1P'):
                 parsed['part_no'] = seg[2:]
             elif seg.startswith('Q'):
@@ -58,11 +100,8 @@ class NokiaLabelService:
             elif seg.startswith('S'):
                 parsed['serial_segments'].append(seg[1:])
             else:
-                # If it doesn't have a known prefix, it's a continuation of the previous field (Serial)
                 parsed['serial_segments'].append(seg)
         
-        # Join serial segments back with GS for the human-readable part, 
-        # but keep them separate for the ISO constructor if needed.
         if parsed['serial_segments']:
             parsed['serial_no'] = GS.join(parsed['serial_segments'])
             
@@ -99,21 +138,42 @@ class NokiaLabelService:
 
     def generate_label(self, raw_string, settings=None):
         """
-        Orchestrates the creation of the label PDF
+        Orchestrates the creation of the label PDF with Dynamic Layout (v2.4)
         """
-        # Default Settings
+        # Default Settings (Measurements in mm, Font in pt)
         default_settings = {
             'labelWidth': 100,
             'labelHeight': 35,
-            'barcodeWidthModule': 0.2,
-            'barcodeHeight': 5,
-            'fontSize': 6,
-            'dmSize': 18,
-            'verticalSpacing': 9
+            'barcodeWidthModule': 0.22,
+            'layout': {
+                'nokiaLogo': {'x': 1.21, 'y': 0.0, 'w': 24.63, 'h': 9.87},
+                'nokiaText': {'x': 28.0, 'y': 4.0, 'fontSize': 9},
+                'amidText': {'x': 62.0, 'y': 3.5, 'fontSize': 11},
+                'ceMark': {'x': 73.0, 'y': 7.0, 'w': 10.09, 'h': 9.83},
+                'ukcaMark': {'x': 73.0, 'y': 20.0, 'w': 10.01, 'h': 10.0},
+                'barcode1': {'x': 2.0, 'y': 12.0, 'h': 5.0, 'fontSize': 8, 'label': '1P'},
+                'barcode2': {'x': 2.0, 'y': 22.5, 'h': 5.0, 'fontSize': 8, 'label': 'S'},
+                'barcode3': {'x': 2.0, 'y': 33.0, 'h': 4.0, 'fontSize': 8, 'label': 'Q'},
+                'dmBarcode': {'x': 85.0, 'y': 8.0, 'size': 18.0},
+                'footer': {'x': 85.0, 'y': 32.0, 'fontSize': 7, 'text': 'Made in India'}
+            }
         }
         
-        # Merge provided settings with defaults
-        s = {**default_settings, **(settings or {})}
+        # Deep merge settings
+        s = default_settings.copy()
+        if settings:
+            # Update top level keys first (except layout)
+            for key in settings:
+                if key != 'layout' and key in s:
+                    s[key] = settings[key]
+            
+            # Deep merge layout
+            if 'layout' in settings:
+                for comp_key, comp_val in settings['layout'].items():
+                    if comp_key in s['layout'] and isinstance(comp_val, dict):
+                        s['layout'][comp_key].update(comp_val)
+                    else:
+                        s['layout'][comp_key] = comp_val
         
         # 1. Parse Data
         data = self.parse_nokia_string(raw_string)
@@ -125,64 +185,95 @@ class NokiaLabelService:
         filename = f"label_{uuid.uuid4().hex}.pdf"
         file_path = os.path.join(self.output_folder, filename)
 
+        # Assets paths
+        assets_dir = os.path.join(os.path.dirname(__file__), 'assets')
+        logo_path = os.path.join(assets_dir, 'Nokia-Logo.jpg')
+        ce_path = os.path.join(assets_dir, 'CC.bmp')
+        ukca_path = os.path.join(assets_dir, 'UKCA black fill.svg')
+
         # 4. Draw PDF using ReportLab
         c = canvas.Canvas(file_path, pagesize=(s['labelWidth']*mm, s['labelHeight']*mm)) 
         
-        # --- DRAW TEXT & LOGOS ---
-        title_font_size = s['fontSize'] + 2
-        c.setFont("Helvetica-Bold", title_font_size)
-        c.drawString(2*mm, (s['labelHeight'] - 4)*mm, "NOKIA Solutions and Networks")
+        l = s['layout']
         
-        c.setFont("Helvetica", s['fontSize'])
-        # Position AMID relative to DataMatrix
-        dm_x = (s['labelWidth'] - s['dmSize'] - 5)*mm
-        c.drawString(dm_x, (s['labelHeight'] - 4)*mm, "AMID") 
-        c.drawString((s['labelWidth'] - 20)*mm, 5*mm, "MADE IN INDIA")
+        # Helper to convert CODESOFT (Top-Left) to ReportLab (Bottom-Left)
+        # Y_RL = LabelHeight - Y_CS - Height
+        def get_rl_y(cs_y, height_mm):
+            return (s['labelHeight'] - cs_y - height_mm) * mm
 
-        # --- DRAW BARCODES (Left Side) ---
-        curr_y = s['labelHeight'] - 9 # Start Y for first barcode label
+        # --- DRAW IMAGES ---
+        # 1. Nokia Logo
+        if os.path.exists(logo_path):
+            cfg = l['nokiaLogo']
+            c.drawImage(logo_path, cfg['x']*mm, get_rl_y(cfg['y'], cfg['h']), 
+                        width=cfg['w']*mm, height=cfg['h']*mm, preserveAspectRatio=True)
         
-        def draw_barcode_group(label_text, barcode_value, height):
-            nonlocal curr_y
-            c.setFont("Helvetica", s['fontSize'])
-            c.drawString(2*mm, curr_y*mm, label_text)
+        # 2. CE Mark
+        if os.path.exists(ce_path):
+            cfg = l['ceMark']
+            c.drawImage(ce_path, cfg['x']*mm, get_rl_y(cfg['y'], cfg['h']), 
+                        width=cfg['w']*mm, height=cfg['h']*mm, preserveAspectRatio=True)
+
+        # 3. UKCA Mark (skip SVG for now, needs conversion)
+        if os.path.exists(ukca_path) and not ukca_path.endswith('.svg'):
+            cfg = l['ukcaMark']
+            c.drawImage(ukca_path, cfg['x']*mm, get_rl_y(cfg['y'], cfg['h']), 
+                        width=cfg['w']*mm, height=cfg['h']*mm)
+        
+        # --- DRAW TEXT ---
+        # Nokia Text
+        cfg = l['nokiaText']
+        c.setFont("Helvetica-Bold", cfg['fontSize'])
+        c.drawString(cfg['x']*mm, (s['labelHeight'] - cfg['y'])*mm - (cfg['fontSize']/2.8)*mm, "Nokia Solutions and Networks")
+        
+        # AMID Text
+        cfg = l['amidText']
+        c.setFont("Helvetica-Bold", cfg['fontSize'])
+        c.drawString(cfg['x']*mm, (s['labelHeight'] - cfg['y'])*mm - (cfg['fontSize']/2.8)*mm, "AMID")
+
+        # --- DRAW BARCODES ---
+        def draw_barcode(cfg_key, barcode_value):
+            cfg = l[cfg_key]
+            # Available width: up to CE mark or end
+            available_width_mm = 58 - cfg['x'] 
             
-            # Dynamic barWidth calculation to prevent overflow
-            # Available width is dm_x - 5mm (margin)
-            available_width_mm = (dm_x / mm) - 5
-            
-            # Create barcode with requested module width
-            bc = code128.Code128(barcode_value, barHeight=height*mm, barWidth=s['barcodeWidthModule']*mm)
-            
-            # Measure barcode width
+            bc = code128.Code128(barcode_value, barHeight=cfg['h']*mm, barWidth=s['barcodeWidthModule']*mm)
             bc_width_mm = bc.width / mm
             
-            # If it overflows, scale down the barWidth
             if bc_width_mm > available_width_mm:
                 scaling_factor = available_width_mm / bc_width_mm
                 new_bar_width = s['barcodeWidthModule'] * scaling_factor
-                bc = code128.Code128(barcode_value, barHeight=height*mm, barWidth=new_bar_width*mm)
+                bc = code128.Code128(barcode_value, barHeight=cfg['h']*mm, barWidth=new_bar_width*mm)
             
-            bc.drawOn(c, 2*mm, (curr_y - height - 1)*mm)
-            curr_y -= s['verticalSpacing']
+            # Position Y: CODESOFT Y is usually the top of the combined block (barcode + text)
+            # Layout: Barcode on Top, Text Below
+            y_rl = get_rl_y(cfg['y'], cfg['h'])
+            bc.drawOn(c, cfg['x']*mm, y_rl)
+            
+            # Label Text Below
+            c.setFont("Helvetica-Bold", cfg['fontSize'])
+            label_text = cfg.get('label', '') 
+            label_display = f"({label_text}) {barcode_value[len(label_text):] if label_text and barcode_value.startswith(label_text) else barcode_value}"
+            c.drawString(cfg['x']*mm, y_rl - (cfg['fontSize']/2.2)*mm, label_display)
 
-        # Barcode 1: Part No
-        draw_barcode_group(f"(1P) {data['part_no']}", f"1P{data['part_no']}", s['barcodeHeight'])
+        draw_barcode('barcode1', f"1P{data['part_no']}")
+        draw_barcode('barcode2', f"S{data['serial_no']}")
+        draw_barcode('barcode3', f"Q{data['qty']}")
 
-        # Barcode 2: Serial No
-        draw_barcode_group(f"(S) {data['serial_no']}", f"S{data['serial_no']}", s['barcodeHeight'])
-
-        # Barcode 3: Qty
-        draw_barcode_group(f"(Q) {data['qty']}", f"Q{data['qty']}", s['barcodeHeight'] - 1)
-
-        # --- DRAW DATAMATRIX (Right Side) ---
+        # --- DRAW DATAMATRIX ---
+        cfg = l['dmBarcode']
         dm_drawing = createBarcodeDrawing('ECC200DataMatrix', 
                                           value=datamatrix_content, 
-                                          width=s['dmSize']*mm, 
-                                          height=s['dmSize']*mm)
-        # Center vertically-ish or position relative to top
-        dm_y = (s['labelHeight'] - s['dmSize'] - 7)*mm
+                                          width=cfg['size']*mm, 
+                                          height=cfg['size']*mm)
+        dm_x = cfg['x']*mm
+        dm_y = get_rl_y(cfg['y'], cfg['size'])
         dm_drawing.drawOn(c, dm_x, dm_y)
+
+        # --- DRAW FOOTER ---
+        cfg = l['footer']
+        c.setFont("Helvetica-Bold", cfg['fontSize'])
+        c.drawCentredString(cfg['x']*mm, (s['labelHeight'] - cfg['y'])*mm, cfg['text'])
 
         c.save()
         return file_path, data

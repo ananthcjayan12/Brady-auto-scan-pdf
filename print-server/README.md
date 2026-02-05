@@ -6,10 +6,14 @@ This directory contains the Brady Print Server backend application.
 
 ### Option 1: Using the Batch File (Easiest)
 
+### Version 2.3 - Redesigned Layout
+The server now incorporates the full Nokia branding layout with precise measurements.
+
 1. **Double-click `run-server.bat`**
 2. First run will automatically:
    - Create a virtual environment
-   - Install all dependencies
+   - Install all dependencies (ReportLab, PyMuPDF, Pillow, pywin32)
+   - Copy required assets (Nokia Logo, CE/UKCA marks)
    - Start the server
 3. Server will be available at `http://localhost:5001`
 
@@ -81,11 +85,15 @@ print-server/
 
 The recent fix changed the printing method to avoid the "Access is denied" error:
 
-**Old Method**: Direct device context manipulation (required admin privileges)  
-**New Method**: `win32ui.CreateDC()` with GDI printing (no admin required)
+**Current Method (v2.3)**: `win32ui.CreateDC()` with GDI printing (no admin required) + Redesigned Nokia Layout.
+The layout includes:
+- Nokia Logo & Header
+- CE and UKCA marks
+- Precise 1D barcode and DataMatrix positioning
+- "Made in India" footer
 
 To test:
-1. Run the server
+1. Run the server using `run-server.bat` (or use the existing `venv`)
 2. Try printing a label through the API
 3. Check logs for: `INFO:services:Print job sent successfully to [printer name]`
 
