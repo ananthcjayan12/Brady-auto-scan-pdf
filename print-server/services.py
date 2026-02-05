@@ -296,13 +296,15 @@ class PrintService:
                 return True, f"Printed to {printer_name}"
             
             else:
-                # Mac/Linux Logic
-                cmd = ['lpr']
-                if printer_name:
-                    cmd.extend(['-P', printer_name])
-                cmd.append(file_path)
-                subprocess.run(cmd, check=True)
-                return True, "Sent to Unix Printer"
+                # Mac/Linux - Open PDF in default viewer for testing
+                logger.info(f"Opening PDF in default viewer (Mac/Linux): {file_path}")
+                
+                if system == 'Darwin':  # macOS
+                    subprocess.run(['open', file_path], check=True)
+                else:  # Linux
+                    subprocess.run(['xdg-open', file_path], check=True)
+                
+                return True, "PDF opened in default viewer (Mac/Linux testing mode)"
 
         except Exception as e:
             logger.error(f"Printing error: {e}", exc_info=True)

@@ -81,13 +81,15 @@ print-server/
 
 The recent fix changed the printing method to avoid the "Access is denied" error:
 
-**Old Method**: Direct device context manipulation (required admin privileges)
-**New Method**: `ShellExecute` with print verb (no admin required)
+**Old Method**: Direct device context manipulation (required admin privileges)  
+**New Method**: `win32ui.CreateDC()` with GDI printing (no admin required)
 
 To test:
 1. Run the server
 2. Try printing a label through the API
 3. Check logs for: `INFO:services:Print job sent successfully to [printer name]`
+
+**Note**: On Mac/Linux, the "print" function will open the PDF in the default viewer for testing purposes. Production Windows systems will use actual GDI printing.
 
 ## 📡 API Endpoints
 
