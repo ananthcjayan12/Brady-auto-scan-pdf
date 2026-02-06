@@ -136,6 +136,15 @@ class NokiaLabelService:
         
         return formatted
 
+    def _get_base_path(self):
+        """Helper to get the correct base path whether running as script or EXE."""
+        if getattr(sys, 'frozen', False):
+            # If frozen, we might be in a temporary folder (onefile) 
+            # or in the executable's folder (onedir)
+            # Use sys._MEIPASS for internal bundled assets
+            return sys._MEIPASS
+        return os.path.dirname(os.path.abspath(__file__))
+
     def generate_label(self, raw_string, settings=None):
         """
         Orchestrates the creation of the label PDF with Dynamic Layout (v2.4)
@@ -186,7 +195,8 @@ class NokiaLabelService:
         file_path = os.path.join(self.output_folder, filename)
 
         # Assets paths
-        assets_dir = os.path.join(os.path.dirname(__file__), 'assets')
+        base_dir = self._get_base_path()
+        assets_dir = os.path.join(base_dir, 'assets')
         logo_path = os.path.join(assets_dir, 'Nokia-Logo.jpg')
         ce_path = os.path.join(assets_dir, 'CC.bmp')
         ukca_path = os.path.join(assets_dir, 'UKCA black fill.svg')

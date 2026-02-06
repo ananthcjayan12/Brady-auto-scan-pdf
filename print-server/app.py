@@ -7,15 +7,23 @@ from flask_cors import CORS
 # Import the new service logic
 from services import NokiaLabelService, PrintService
 
+import sys
+
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def get_base_path():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Configuration
-TEMP_FOLDER = os.path.join(os.path.dirname(__file__), 'temp_labels')
+BASE_DIR = get_base_path()
+TEMP_FOLDER = os.path.join(BASE_DIR, 'temp_labels')
 os.makedirs(TEMP_FOLDER, exist_ok=True)
 
 # Initialize Services

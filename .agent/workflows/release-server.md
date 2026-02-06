@@ -21,9 +21,10 @@ pip install pyinstaller
 
 4. Build the executable using PyInstaller
 // turbo
-5. Run the following command to build
+5. Run the following command to build (includes assets folder)
 ```bash
-pyinstaller --onedir --name BradyPrintBridge app.py
+# On Windows (PowerShell/CMD):
+pyinstaller --onedir --name BradyPrintBridge --add-data "assets;assets" app.py
 ```
 
 6. The executable will be available in the `dist/BradyPrintBridge` folder.

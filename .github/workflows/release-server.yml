@@ -1,6 +1,8 @@
 name: Build Print Server
 
 on:
+  push:
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -36,6 +38,7 @@ jobs:
             --hidden-import win32ui `
             --hidden-import win32con `
             --hidden-import PIL.ImageWin `
+            --add-data "assets;assets" `
             app.py
 
       - name: Create Zip Bundle
@@ -66,7 +69,9 @@ jobs:
           tag_name: v${{ github.run_number }}
           name: Release v${{ github.run_number }}
           body: |
-            Automated build.
+            Automated build v2.4.
+            - Fixed asset bundling (logos and CE marks now visible in EXE).
+            - Added dynamic layout controls support.
             
             ## Downloads
             
