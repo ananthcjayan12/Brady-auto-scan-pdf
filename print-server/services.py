@@ -47,9 +47,16 @@ class NokiaLabelService:
                 pass
 
         # Now we have a payload that contains GS or other delimiter
-        # Sometimes scanners replace GS with other characters or just omit it
-        # Let's try to find common prefixes (1P, S, Q) if GS is missing
-        if GS not in clean_string:
+        # Sometimes scanners replace GS with other characters like |, ~, or just omit it
+        # If we see common delimiters, use them
+        delimiters = [GS, '|', '~', '']
+        main_delimiter = None
+        for d in delimiters:
+            if d in clean_string:
+                main_delimiter = d
+                break
+
+        if not main_delimiter:
             # Simple heuristic: look for 1P, S, Q
             parsed = {
                 'part_no': 'UNKNOWN', 
@@ -59,16 +66,22 @@ class NokiaLabelService:
                 'serial_segments': []
             }
             
+            # Clean header if it stuck around
+            if clean_string.startswith("[)>06"):
+                clean_string = clean_string[5:]
+            elif clean_string.startswith("06"):
+                clean_string = clean_string[2:]
+            
             # Split by common prefixes to isolate fields
-            # We look for 1P, S, Q as delimiters
+            # We look for 1P, S, Q, 18V, 4L, 10D as delimiters
             # Example: 061P475773A.102SUK2545A0510Q1
             
-            # 1. Extract Part Number (Starts with 1P, ends before S or Q)
-            p_match = re.search(r'1P(.*?)(?=S|Q|$)', clean_string)
+            # 1. Extract Part Number (Starts with 1P, ends before S, Q, or other field)
+            p_match = re.search(r'1P(.*?)(?=S|Q|18V|4L|10D|$)', clean_string)
             if p_match: parsed['part_no'] = p_match.group(1).strip()
             
-            # 2. Extract Serial Number (Starts with S, ends before Q or EOT/RS)
-            s_match = re.search(r'S(.*?)(?=Q|$)', clean_string)
+            # 2. Extract Serial Number (Starts with S, ends before Q, 1P, or other field)
+            s_match = re.search(r'S(.*?)(?=Q|1P|18V|4L|10D|$)', clean_string)
             if s_match: 
                 val = s_match.group(1).strip()
                 parsed['serial_no'] = val
@@ -80,7 +93,7 @@ class NokiaLabelService:
             
             return parsed
 
-        segments = clean_string.split(GS)
+        segments = clean_string.split(main_delimiter)
         parsed = {
             'part_no': 'UNKNOWN', 
             'serial_no': 'UNKNOWN', 
@@ -245,19 +258,21 @@ class NokiaLabelService:
         def draw_barcode(cfg_key, barcode_value):
             cfg = l[cfg_key]
             # Available width: up to CE mark or end
-            available_width_mm = 58 - cfg['x'] 
+            available_width_mm = 58 - cfg['x']
             
-            bc = code128.Code128(barcode_value, barHeight=cfg['h']*mm, barWidth=s['barcodeWidthModule']*mm)
+            bc = code128.Code128(barcode_value, barHeight=cfg['h']*mm, barWidth=s['barcodeWidthModule']*mm, quiet=0)
             bc_width_mm = bc.width / mm
             
             if bc_width_mm > available_width_mm:
                 scaling_factor = available_width_mm / bc_width_mm
                 new_bar_width = s['barcodeWidthModule'] * scaling_factor
-                bc = code128.Code128(barcode_value, barHeight=cfg['h']*mm, barWidth=new_bar_width*mm)
+                bc = code128.Code128(barcode_value, barHeight=cfg['h']*mm, barWidth=new_bar_width*mm, quiet=0)
             
             # Position Y: CODESOFT Y is usually the top of the combined block (barcode + text)
             # Layout: Barcode on Top, Text Below
             y_rl = get_rl_y(cfg['y'], cfg['h'])
+            # Shift barcode 1.2mm left to align first bar with text start (compensating for internal quiet zone)
+            # REVERTED: User requested exact alignment with text. With quiet=0, they should match.
             bc.drawOn(c, cfg['x']*mm, y_rl)
             
             # Label Text Below
