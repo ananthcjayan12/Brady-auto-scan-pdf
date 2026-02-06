@@ -152,19 +152,19 @@ class NokiaLabelService:
         # Default Settings (Measurements in mm, Font in pt)
         default_settings = {
             'labelWidth': 100,
-            'labelHeight': 35,
-            'barcodeWidthModule': 0.22,
+            'labelHeight': 38,
+            'barcodeWidthModule': 0.3,
             'layout': {
-                'nokiaLogo': {'x': 1.21, 'y': 0.0, 'w': 24.63, 'h': 9.87},
-                'nokiaText': {'x': 28.0, 'y': 4.0, 'fontSize': 9},
-                'amidText': {'x': 62.0, 'y': 3.5, 'fontSize': 11},
-                'ceMark': {'x': 73.0, 'y': 7.0, 'w': 10.09, 'h': 9.83},
+                'nokiaLogo': {'x': -2.3, 'y': -1.5, 'w': 24.63, 'h': 9.87},
+                'nokiaText': {'x': 28.0, 'y': 0.1, 'fontSize': 14},
+                'amidText': {'x': 77.0, 'y': 5.9, 'fontSize': 14},
+                'ceMark': {'x': 62.0, 'y': 7.0, 'w': 10.09, 'h': 9.83},
                 'ukcaMark': {'x': 73.0, 'y': 20.0, 'w': 10.01, 'h': 10.0},
-                'barcode1': {'x': 2.0, 'y': 12.0, 'h': 5.0, 'fontSize': 8, 'label': '1P'},
-                'barcode2': {'x': 2.0, 'y': 22.5, 'h': 5.0, 'fontSize': 8, 'label': 'S'},
-                'barcode3': {'x': 2.0, 'y': 33.0, 'h': 4.0, 'fontSize': 8, 'label': 'Q'},
-                'dmBarcode': {'x': 85.0, 'y': 8.0, 'size': 18.0},
-                'footer': {'x': 85.0, 'y': 32.0, 'fontSize': 7, 'text': 'Made in India'}
+                'barcode1': {'x': 2.0, 'y': 6.6, 'h': 5.0, 'fontSize': 10, 'label': '1P'},
+                'barcode2': {'x': 2.0, 'y': 17.0, 'h': 5.0, 'fontSize': 10, 'label': 'S'},
+                'barcode3': {'x': 2.0, 'y': 28.0, 'h': 4.0, 'fontSize': 10, 'label': 'Q'},
+                'dmBarcode': {'x': 75.0, 'y': 12.5, 'size': 18.0},
+                'footer': {'x': 85.0, 'y': 35.0, 'fontSize': 8, 'text': 'Made in India'}
             }
         }
         
