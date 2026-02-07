@@ -11,6 +11,9 @@ from reportlab.pdfgen import canvas
 from reportlab.graphics.barcode import code128
 # DataMatrix in reportlab requires 'reportlab' version >= 3.x
 from reportlab.graphics.barcode import createBarcodeDrawing
+from svglib.svglib import svg2rlg
+from reportlab.graphics import renderPDF
+
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +175,7 @@ class NokiaLabelService:
                 'nokiaText': {'x': 28.0, 'y': 0.1, 'fontSize': 14},
                 'amidText': {'x': 77.0, 'y': 5.9, 'fontSize': 14},
                 'ceMark': {'x': 62.0, 'y': 7.0, 'w': 10.09, 'h': 9.83},
-                'ukcaMark': {'x': 73.0, 'y': 20.0, 'w': 10.01, 'h': 10.0},
+                'ukcaMark': {'x': 63.0, 'y': 20.0, 'w': 10.01, 'h': 10.0},
                 'barcode1': {'x': 2.0, 'y': 6.6, 'h': 5.0, 'fontSize': 10, 'label': '1P'},
                 'barcode2': {'x': 2.0, 'y': 17.0, 'h': 5.0, 'fontSize': 10, 'label': 'S'},
                 'barcode3': {'x': 2.0, 'y': 28.0, 'h': 4.0, 'fontSize': 10, 'label': 'Q'},
@@ -237,11 +240,24 @@ class NokiaLabelService:
             c.drawImage(ce_path, cfg['x']*mm, get_rl_y(cfg['y'], cfg['h']), 
                         width=cfg['w']*mm, height=cfg['h']*mm, preserveAspectRatio=True)
 
-        # 3. UKCA Mark (skip SVG for now, needs conversion)
-        if os.path.exists(ukca_path) and not ukca_path.endswith('.svg'):
+        # 3. UKCA Mark
+        if os.path.exists(ukca_path):
             cfg = l['ukcaMark']
-            c.drawImage(ukca_path, cfg['x']*mm, get_rl_y(cfg['y'], cfg['h']), 
-                        width=cfg['w']*mm, height=cfg['h']*mm)
+            if ukca_path.endswith('.svg'):
+                # Render SVG to ReportLab Graphics Drawing
+                drawing = svg2rlg(ukca_path)
+                # Scale drawing to fit target width/height
+                # Drawing initial width/height: drawing.width, drawing.height
+                if drawing.width > 0 and drawing.height > 0:
+                    scale_x = (cfg['w'] * mm) / drawing.width
+                    scale_y = (cfg['h'] * mm) / drawing.height
+                    drawing.scale(scale_x, scale_y)
+                    # Use renderPDF to draw on the canvas
+                    renderPDF.draw(drawing, c, cfg['x']*mm, get_rl_y(cfg['y'], cfg['h']))
+            else:
+                c.drawImage(ukca_path, cfg['x']*mm, get_rl_y(cfg['y'], cfg['h']), 
+                            width=cfg['w']*mm, height=cfg['h']*mm)
+
         
         # --- DRAW TEXT ---
         # Nokia Text

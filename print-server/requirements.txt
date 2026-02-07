@@ -4,3 +4,4 @@ reportlab
 PyMuPDF
 Pillow
 pywin32; platform_system == 'Windows'
+svglib
