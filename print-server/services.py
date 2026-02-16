@@ -23,6 +23,37 @@ class NokiaLabelService:
         self.output_folder = output_folder
         logger.info("--- NokiaLabelService Initialized (Direct Printing Version v2.4) ---")
 
+    def _split_additional_segments(self, text):
+        """
+        Splits concatenated post-quantity payload into known application segments.
+        Example: 4LIN18VLENOK -> [4LIN, 18VLENOK]
+        """
+        payload = (text or '').strip()
+        if not payload:
+            return []
+
+        pattern = r'(4L|18V|10D)'
+        matches = list(re.finditer(pattern, payload))
+
+        if not matches:
+            return [payload]
+
+        segments = []
+
+        if matches[0].start() > 0:
+            leading = payload[:matches[0].start()].strip()
+            if leading:
+                segments.append(leading)
+
+        for i, match in enumerate(matches):
+            start = match.start()
+            end = matches[i + 1].start() if i + 1 < len(matches) else len(payload)
+            segment = payload[start:end].strip()
+            if segment:
+                segments.append(segment)
+
+        return segments
+
     def parse_nokia_string(self, raw_string):
         """
         Advanced parser for Nokia strings. 
@@ -66,7 +97,8 @@ class NokiaLabelService:
                 'serial_no': 'UNKNOWN', 
                 'qty': '1', 
                 'raw': raw_string,
-                'serial_segments': []
+                'serial_segments': [],
+                'post_qty_segments': []
             }
             
             # Clean header if it stuck around
@@ -90,9 +122,20 @@ class NokiaLabelService:
                 parsed['serial_no'] = val
                 parsed['serial_segments'] = [val]
                 
-            # 3. Extract Quantity (Starts with Q, ends before next prefix or end)
-            q_match = re.search(r'Q(\d+)', clean_string)
-            if q_match: parsed['qty'] = q_match.group(1)
+            # 3. Extract Quantity + post-Q segments (e.g. Q14LIN18VLENOK)
+            q_match = re.search(r'Q(\d+)(.*)$', clean_string)
+            if q_match:
+                digits = q_match.group(1)
+                suffix = q_match.group(2).strip()
+
+                if suffix and digits:
+                    # Nokia payloads can concatenate: Q1 + 4LIN + 18V...
+                    parsed['qty'] = digits[0]
+                    remainder = f"{digits[1:]}{suffix}".strip()
+                    if remainder:
+                        parsed['post_qty_segments'] = self._split_additional_segments(remainder)
+                else:
+                    parsed['qty'] = digits
             
             return parsed
 
@@ -102,7 +145,8 @@ class NokiaLabelService:
             'serial_no': 'UNKNOWN', 
             'qty': '1', 
             'raw': raw_string,
-            'serial_segments': []
+            'serial_segments': [],
+            'post_qty_segments': []
         }
         
         for seg in segments:
@@ -112,9 +156,25 @@ class NokiaLabelService:
             if seg.startswith('1P'):
                 parsed['part_no'] = seg[2:]
             elif seg.startswith('Q'):
-                parsed['qty'] = seg[1:]
+                q_payload = seg[1:].strip()
+                if re.fullmatch(r'\d+', q_payload):
+                    parsed['qty'] = q_payload
+                else:
+                    m = re.match(r'^(\d+)(.*)$', q_payload)
+                    if m:
+                        digits, suffix = m.groups()
+                        suffix = suffix.strip()
+                        if suffix and digits:
+                            parsed['qty'] = digits[0]
+                            remainder = f"{digits[1:]}{suffix}".strip()
+                            if remainder:
+                                parsed['post_qty_segments'].extend(self._split_additional_segments(remainder))
+                        else:
+                            parsed['qty'] = digits
             elif seg.startswith('S'):
                 parsed['serial_segments'].append(seg[1:])
+            elif seg.startswith(('4L', '18V', '10D')):
+                parsed['post_qty_segments'].append(seg)
             else:
                 parsed['serial_segments'].append(seg)
         
@@ -146,6 +206,10 @@ class NokiaLabelService:
             
         # Quantity Segment
         formatted += f"Q{parsed_data['qty']}"
+
+        # Post-Quantity Application Segments
+        for segment in parsed_data.get('post_qty_segments', []):
+            formatted += f"{GS}{segment}"
         
         # Footer
         formatted += f"{RS}{EOT}"
