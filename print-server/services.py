@@ -54,6 +54,29 @@ class NokiaLabelService:
 
         return segments
 
+    def _extract_named_segments(self, text, prefixes, stop_tokens):
+        """
+        Extracts prefixed segments from a concatenated payload.
+        Returns segments ordered by the `prefixes` argument.
+        """
+        payload = (text or '').strip()
+        if not payload:
+            return []
+
+        prefix_pattern = '|'.join(re.escape(prefix) for prefix in prefixes)
+        stop_pattern = '|'.join(re.escape(token) for token in stop_tokens)
+        pattern = rf'({prefix_pattern})(.*?)(?={stop_pattern}|$)'
+
+        found = {}
+        for match in re.finditer(pattern, payload):
+            prefix = match.group(1)
+            value = match.group(2).strip()
+            segment = f"{prefix}{value}"
+            if prefix not in found and len(segment) > len(prefix):
+                found[prefix] = segment
+
+        return [found[prefix] for prefix in prefixes if prefix in found]
+
     def parse_nokia_string(self, raw_string):
         """
         Advanced parser for Nokia strings. 
@@ -136,6 +159,16 @@ class NokiaLabelService:
                         parsed['post_qty_segments'] = self._split_additional_segments(remainder)
                 else:
                     parsed['qty'] = digits
+
+            # 4L/18V can appear before or after Q in raw concatenated scans.
+            # Normalize these segments for QR output in expected order: 4L then 18V.
+            normalized_segments = self._extract_named_segments(
+                clean_string,
+                prefixes=['4L', '18V'],
+                stop_tokens=['4L', '18V', '10D', 'Q', '1P', 'S']
+            )
+            if normalized_segments:
+                parsed['post_qty_segments'] = normalized_segments
             
             return parsed
 
