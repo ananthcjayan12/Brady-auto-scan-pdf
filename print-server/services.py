@@ -218,15 +218,17 @@ class NokiaLabelService:
 
     def construct_iso15434_string(self, parsed_data):
         """
-        Strict ISO-15434 construction.
-        Format: [)>{RS}06{GS}1P...{GS}S...{GS}...{GS}Q...{RS}{EOT}
+        Constructs QR payload using visible token text.
+        Format: [)>{RS}06{GS}1P...{GS}S...{GS}Q...{GS}...{RS}{EOT}
         """
-        RS = chr(30)
-        GS = chr(29)
-        EOT = chr(4)
+        RS = "{RS}"
+        GS = "{GS}"
+        EOT = "{EOT}"
 
         # Header
-        formatted = f"[)>{RS}06{GS}"
+        # Some decoders normalize ISO signatures and hide one '>' in display mode.
+        # Emit double '>' so displayed text remains [)>...
+        formatted = f"[)>>{RS}06{GS}"
         
         # Part Number Segment
         formatted += f"1P{parsed_data['part_no']}{GS}"
@@ -246,6 +248,12 @@ class NokiaLabelService:
         
         # Footer
         formatted += f"{RS}{EOT}"
+
+        # Defensive normalization: always keep ISO prefix as [)>
+        if formatted.startswith("[){RS}"):
+            formatted = formatted.replace("[){RS}", "[)>{RS}", 1)
+        elif formatted.startswith("[)") and not formatted.startswith("[)>"):
+            formatted = f"[)>{formatted[2:]}"
         
         return formatted
 
