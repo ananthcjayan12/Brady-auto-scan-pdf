@@ -9,7 +9,6 @@ from io import BytesIO
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 from reportlab.graphics.barcode import code128
-# DataMatrix in reportlab requires 'reportlab' version >= 3.x
 from reportlab.graphics.barcode import createBarcodeDrawing
 from svglib.svglib import svg2rlg
 from reportlab.graphics import renderPDF
@@ -218,43 +217,28 @@ class NokiaLabelService:
 
     def construct_iso15434_string(self, parsed_data):
         """
-        Constructs QR payload using visible token text.
+        Constructs the QR code payload as literal visible text.
         Format: [)>{RS}06{GS}1P...{GS}S...{GS}Q...{GS}...{RS}{EOT}
         """
         RS = "{RS}"
         GS = "{GS}"
         EOT = "{EOT}"
 
-        # Header
-        # Some decoders normalize ISO signatures and hide one '>' in display mode.
-        # Emit double '>' so displayed text remains [)>...
-        formatted = f"[)>>{RS}06{GS}"
-        
-        # Part Number Segment
+        formatted = "[)>" + RS + "06" + GS
         formatted += f"1P{parsed_data['part_no']}{GS}"
-        
-        # Serial Number Segment (including internal GS markers)
+
         if parsed_data.get('serial_segments'):
             formatted += "S" + GS.join(parsed_data['serial_segments']) + GS
         else:
             formatted += f"S{parsed_data['serial_no']}{GS}"
-            
-        # Quantity Segment
+
         formatted += f"Q{parsed_data['qty']}"
 
-        # Post-Quantity Application Segments
         for segment in parsed_data.get('post_qty_segments', []):
             formatted += f"{GS}{segment}"
-        
-        # Footer
-        formatted += f"{RS}{EOT}"
 
-        # Defensive normalization: always keep ISO prefix as [)>
-        if formatted.startswith("[){RS}"):
-            formatted = formatted.replace("[){RS}", "[)>{RS}", 1)
-        elif formatted.startswith("[)") and not formatted.startswith("[)>"):
-            formatted = f"[)>{formatted[2:]}"
-        
+        formatted += RS + EOT
+
         return formatted
 
     def _get_base_path(self):
@@ -406,15 +390,12 @@ class NokiaLabelService:
         draw_barcode('barcode2', f"S{data['serial_no']}")
         draw_barcode('barcode3', f"Q{data['qty']}")
 
-        # --- DRAW DATAMATRIX ---
+        # --- DRAW QR CODE (replaces DataMatrix - handles all characters correctly) ---
         cfg = l['dmBarcode']
-        dm_drawing = createBarcodeDrawing('ECC200DataMatrix', 
-                                          value=datamatrix_content, 
-                                          width=cfg['size']*mm, 
-                                          height=cfg['size']*mm)
-        dm_x = cfg['x']*mm
-        dm_y = get_rl_y(cfg['y'], cfg['size'])
-        dm_drawing.drawOn(c, dm_x, dm_y)
+        qr = createBarcodeDrawing('QR', value=datamatrix_content,
+                                   width=cfg['size']*mm, height=cfg['size']*mm,
+                                   qrVersion=None, barBorder=1)
+        qr.drawOn(c, cfg['x']*mm, get_rl_y(cfg['y'], cfg['size']))
 
         # --- DRAW FOOTER ---
         cfg = l['footer']
