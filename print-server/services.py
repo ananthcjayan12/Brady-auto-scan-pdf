@@ -10,11 +10,50 @@ from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 from reportlab.graphics.barcode import code128
 from reportlab.graphics.barcode import createBarcodeDrawing
+from reportlab.graphics.barcode import ecc200datamatrix
 from svglib.svglib import svg2rlg
 from reportlab.graphics import renderPDF
 
 
 logger = logging.getLogger(__name__)
+
+
+def _patch_reportlab_ecc200_ascii():
+    """
+    Patch ReportLab ECC200 to encode payload in ASCII mode.
+    This avoids C40 end-padding artifacts (trailing '~') while keeping true DataMatrix output.
+    """
+
+    def _encode_ascii_mode(self, value):
+        codewords = []
+
+        for char in value:
+            code_point = ord(char)
+            if code_point <= 127:
+                codewords.append(code_point + 1)
+            elif code_point <= 255:
+                codewords.append(235)
+                codewords.append(code_point - 127)
+            else:
+                raise Exception('Cannot encode %s (%s)' % (char, code_point))
+
+        if len(codewords) > self.cw_data:
+            raise Exception('Too much data to fit into a data matrix of this size')
+
+        if len(codewords) < self.cw_data:
+            codewords.append(129)
+            while len(codewords) < self.cw_data:
+                randomized = ((149 * (len(codewords) + 1)) % 253) + 1
+                codewords.append((129 + randomized) % 254)
+
+        return codewords
+
+    if getattr(ecc200datamatrix.ECC200DataMatrix._encode_c40, '__name__', '') != '_encode_ascii_mode':
+        ecc200datamatrix.ECC200DataMatrix._encode_c40 = _encode_ascii_mode
+        logger.info('Applied ReportLab ECC200 ASCII-mode patch')
+
+
+_patch_reportlab_ecc200_ascii()
 
 # --- NEW SERVICE: Handles Parsing & PDF Creation ---
 class NokiaLabelService:
@@ -390,12 +429,15 @@ class NokiaLabelService:
         draw_barcode('barcode2', f"S{data['serial_no']}")
         draw_barcode('barcode3', f"Q{data['qty']}")
 
-        # --- DRAW QR CODE (replaces DataMatrix - handles all characters correctly) ---
+        # --- DRAW DATAMATRIX ---
         cfg = l['dmBarcode']
-        qr = createBarcodeDrawing('QR', value=datamatrix_content,
-                                   width=cfg['size']*mm, height=cfg['size']*mm,
-                                   qrVersion=None, barBorder=1)
-        qr.drawOn(c, cfg['x']*mm, get_rl_y(cfg['y'], cfg['size']))
+        dm_drawing = createBarcodeDrawing('ECC200DataMatrix',
+                          value=datamatrix_content,
+                          width=cfg['size']*mm,
+                          height=cfg['size']*mm)
+        dm_x = cfg['x']*mm
+        dm_y = get_rl_y(cfg['y'], cfg['size'])
+        dm_drawing.drawOn(c, dm_x, dm_y)
 
         # --- DRAW FOOTER ---
         cfg = l['footer']
