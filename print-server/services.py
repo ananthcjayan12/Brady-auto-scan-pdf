@@ -256,12 +256,12 @@ class NokiaLabelService:
 
     def construct_iso15434_string(self, parsed_data):
         """
-        Constructs the QR code payload as literal visible text.
-        Format: [)>{RS}06{GS}1P...{GS}S...{GS}Q...{GS}...{RS}{EOT}
+        Constructs the Data Matrix payload with real ISO-15434 control characters.
+        Format: [)> + RS + 06 + GS + 1P... + GS + S... + GS + Q... + ... + RS + EOT
         """
-        RS = "{RS}"
-        GS = "{GS}"
-        EOT = "{EOT}"
+        RS = chr(30)
+        GS = chr(29)
+        EOT = chr(4)
 
         formatted = "[)>" + RS + "06" + GS
         formatted += f"1P{parsed_data['part_no']}{GS}"
@@ -279,6 +279,17 @@ class NokiaLabelService:
         formatted += RS + EOT
 
         return formatted
+
+    def make_datamatrix_debug_string(self, datamatrix_value):
+        """
+        Converts hidden ISO-15434 control characters into visible tokens for logs/UI.
+        """
+        return (
+            datamatrix_value
+            .replace(chr(30), "{RS}")
+            .replace(chr(29), "{GS}")
+            .replace(chr(4), "{EOT}")
+        )
 
     def _get_base_path(self):
         """Helper to get the correct base path whether running as script or EXE."""
@@ -333,6 +344,8 @@ class NokiaLabelService:
         
         # 2. Create ISO String for DataMatrix
         datamatrix_content = self.construct_iso15434_string(data)
+        data['datamatrix_value'] = datamatrix_content
+        data['datamatrix_debug'] = self.make_datamatrix_debug_string(datamatrix_content)
 
         # 3. Define PDF Filename
         filename = f"label_{uuid.uuid4().hex}.pdf"

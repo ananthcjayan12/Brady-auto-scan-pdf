@@ -292,6 +292,10 @@ function App() {
                       <span className="detail-label">Quantity</span>
                       <span className="detail-value">{(currentLabel || templateLabel).parsed_data.qty}</span>
                     </div>
+                    <div className="detail-item">
+                      <span className="detail-label">DataMatrix Out</span>
+                      <span className="detail-value">{(currentLabel || templateLabel).parsed_data.datamatrix_debug}</span>
+                    </div>
                   </div>
                 )}
               </div>
