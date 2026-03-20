@@ -61,6 +61,26 @@ class NokiaLabelService:
         self.output_folder = output_folder
         logger.info("--- NokiaLabelService Initialized (Direct Printing Version v2.4) ---")
 
+    def _normalize_post_qty_segment(self, segment):
+        """
+        Nokia's 18VLEN application identifier must always end with SN
+        regardless of the scanned suffix.
+        """
+        cleaned = (segment or '').strip()
+        if cleaned.upper().startswith('18VLEN'):
+            return '18VLENSN'
+        return cleaned
+
+    def _normalize_post_qty_segments(self, segments):
+        return [
+            normalized
+            for normalized in (
+                self._normalize_post_qty_segment(segment)
+                for segment in (segments or [])
+            )
+            if normalized
+        ]
+
     def _split_additional_segments(self, text):
         """
         Splits concatenated post-quantity payload into known application segments.
@@ -207,6 +227,8 @@ class NokiaLabelService:
             )
             if normalized_segments:
                 parsed['post_qty_segments'] = normalized_segments
+
+            parsed['post_qty_segments'] = self._normalize_post_qty_segments(parsed['post_qty_segments'])
             
             return parsed
 
@@ -251,6 +273,8 @@ class NokiaLabelService:
         
         if parsed['serial_segments']:
             parsed['serial_no'] = GS.join(parsed['serial_segments'])
+
+        parsed['post_qty_segments'] = self._normalize_post_qty_segments(parsed['post_qty_segments'])
             
         return parsed
 
@@ -273,7 +297,7 @@ class NokiaLabelService:
 
         formatted += f"Q{parsed_data['qty']}"
 
-        for segment in parsed_data.get('post_qty_segments', []):
+        for segment in self._normalize_post_qty_segments(parsed_data.get('post_qty_segments', [])):
             formatted += f"{GS}{segment}"
 
         formatted += RS + EOT
