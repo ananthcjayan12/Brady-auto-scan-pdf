@@ -37,6 +37,33 @@ class NokiaLabelServiceTests(unittest.TestCase):
             '[)>{RS}06{GS}1P475773A.102{GS}SUK2550A0274{GS}Q1{GS}4LIN{GS}18VLENSN{RS}{EOT}',
         )
 
+    def test_custom_postfix_mapping_overrides_default_suffix(self):
+        raw_input = '[)>\x1e06\x1d1P475773A.102\x1dSUK2545A0499\x1dQ1\x1d4LIN\x1d18VLENSN\x1e\x04'
+        postfix_mappings = [{'matchPrefix': '18VLEN', 'postfix': 'OK'}]
+
+        parsed = self.service.parse_nokia_string(raw_input, postfix_mappings=postfix_mappings)
+        datamatrix = self.service.construct_iso15434_string(parsed, postfix_mappings=postfix_mappings)
+        debug_value = self.service.make_datamatrix_debug_string(datamatrix)
+
+        self.assertEqual(parsed['post_qty_segments'], ['4LIN', '18VLENOK'])
+        self.assertEqual(
+            debug_value,
+            '[)>{RS}06{GS}1P475773A.102{GS}SUK2545A0499{GS}Q1{GS}4LIN{GS}18VLENOK{RS}{EOT}',
+        )
+
+    def test_empty_postfix_mappings_keep_scanned_suffix(self):
+        raw_input = '[)>\x1e06\x1d1P475773A.102\x1dSUK2545A0499\x1dQ1\x1d4LIN\x1d18VLENOK\x1e\x04'
+
+        parsed = self.service.parse_nokia_string(raw_input, postfix_mappings=[])
+        datamatrix = self.service.construct_iso15434_string(parsed, postfix_mappings=[])
+        debug_value = self.service.make_datamatrix_debug_string(datamatrix)
+
+        self.assertEqual(parsed['post_qty_segments'], ['4LIN', '18VLENOK'])
+        self.assertEqual(
+            debug_value,
+            '[)>{RS}06{GS}1P475773A.102{GS}SUK2545A0499{GS}Q1{GS}4LIN{GS}18VLENOK{RS}{EOT}',
+        )
+
 
 if __name__ == '__main__':
     unittest.main()

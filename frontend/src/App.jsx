@@ -5,7 +5,64 @@ import BarcodeInput from './components/BarcodeInput';
 import './App.css';
 
 const API_BASE_URL = 'http://localhost:5001';
-const SAMPLE_INPUT = '1PABC12345678GS99SXYZ789012345678GSQ10';
+const SAMPLE_INPUT = '1P475773A.102SUK2545A0499Q14LIN18VLENOK';
+
+const getDefaultLabelSettings = () => ({
+  labelWidth: 100,
+  labelHeight: 38,
+  barcodeWidthModule: 0.3,
+  postfixMappings: [
+    { matchPrefix: '18VLEN', postfix: 'SN' }
+  ],
+  layout: {
+    nokiaLogo: { x: -2.3, y: -1.5, w: 24.63, h: 9.87 },
+    nokiaText: { x: 28.0, y: 0.1, fontSize: 14 },
+    amidText: { x: 77.0, y: 5.9, fontSize: 14 },
+    ceMark: { x: 62.0, y: 7.0, w: 10.09, h: 9.83 },
+    ukcaMark: { x: 73.0, y: 20.0, w: 10.01, h: 10.0 },
+    barcode1: { x: 2.0, y: 6.6, h: 5.0, fontSize: 10, label: '1P' },
+    barcode2: { x: 2.0, y: 17.0, h: 5.0, fontSize: 10, label: 'S' },
+    barcode3: { x: 2.0, y: 28.0, h: 4.0, fontSize: 10, label: 'Q' },
+    dmBarcode: { x: 75.0, y: 12.5, size: 18.0 },
+    footer: { x: 85.0, y: 35.0, fontSize: 8 }
+  }
+});
+
+const normalizeMappingValue = (value = '') => value.toUpperCase().replace(/\s+/g, '');
+
+const hydrateLabelSettings = () => {
+  const defaults = getDefaultLabelSettings();
+  const saved = localStorage.getItem('labelSettings');
+
+  if (!saved) {
+    return defaults;
+  }
+
+  try {
+    const parsed = JSON.parse(saved);
+    const mergedLayout = Object.fromEntries(
+      Object.entries(defaults.layout).map(([key, defaultLayout]) => [
+        key,
+        { ...defaultLayout, ...(parsed.layout?.[key] || {}) }
+      ])
+    );
+
+    return {
+      ...defaults,
+      ...parsed,
+      layout: mergedLayout,
+      postfixMappings: Array.isArray(parsed.postfixMappings)
+        ? parsed.postfixMappings.map((mapping = {}) => ({
+            matchPrefix: normalizeMappingValue(mapping.matchPrefix || ''),
+            postfix: normalizeMappingValue(mapping.postfix || '')
+          }))
+        : defaults.postfixMappings
+    };
+  } catch (error) {
+    console.error('Failed to load saved label settings:', error);
+    return defaults;
+  }
+};
 
 function App() {
   // Navigation
@@ -29,31 +86,7 @@ function App() {
   });
 
   // Label Settings
-  const [labelSettings, setLabelSettings] = useState(() => {
-    const saved = localStorage.getItem('labelSettings');
-    const defaults = {
-      labelWidth: 100,
-      labelHeight: 38,
-      barcodeWidthModule: 0.3,
-      layout: {
-        nokiaLogo: { x: -2.3, y: -1.5, w: 24.63, h: 9.87 },
-        nokiaText: { x: 28.0, y: 0.1, fontSize: 14 },
-        amidText: { x: 77.0, y: 5.9, fontSize: 14 },
-        ceMark: { x: 62.0, y: 7.0, w: 10.09, h: 9.83 },
-        ukcaMark: { x: 73.0, y: 20.0, w: 10.01, h: 10.0 },
-        barcode1: { x: 2.0, y: 6.6, h: 5.0, fontSize: 10, label: '1P' },
-        barcode2: { x: 2.0, y: 17.0, h: 5.0, fontSize: 10, label: 'S' },
-        barcode3: { x: 2.0, y: 28.0, h: 4.0, fontSize: 10, label: 'Q' },
-        dmBarcode: { x: 75.0, y: 12.5, size: 18.0 },
-        footer: { x: 85.0, y: 35.0, fontSize: 8 }
-      }
-    };
-    if (!saved) return defaults;
-    const parsed = JSON.parse(saved);
-    // Ensure layout exists in saved settings (migration)
-    if (!parsed.layout) parsed.layout = defaults.layout;
-    return parsed;
-  });
+  const [labelSettings, setLabelSettings] = useState(hydrateLabelSettings);
 
   // Preview State
   const [currentLabel, setCurrentLabel] = useState(null);
@@ -178,6 +211,34 @@ function App() {
           [entry]: val
         }
       }
+    }));
+  };
+
+  const updatePostfixMapping = (index, field, value) => {
+    setLabelSettings(prev => ({
+      ...prev,
+      postfixMappings: prev.postfixMappings.map((mapping, mappingIndex) => (
+        mappingIndex === index
+          ? { ...mapping, [field]: normalizeMappingValue(value) }
+          : mapping
+      ))
+    }));
+  };
+
+  const addPostfixMapping = () => {
+    setLabelSettings(prev => ({
+      ...prev,
+      postfixMappings: [
+        ...prev.postfixMappings,
+        { matchPrefix: '', postfix: '' }
+      ]
+    }));
+  };
+
+  const removePostfixMapping = (index) => {
+    setLabelSettings(prev => ({
+      ...prev,
+      postfixMappings: prev.postfixMappings.filter((_, mappingIndex) => mappingIndex !== index)
     }));
   };
 
@@ -386,6 +447,62 @@ function App() {
 
                 <div className="settings-section">
                   <h2>Layout Controls</h2>
+
+                  <div className="mapping-settings-card">
+                    <div className="mapping-settings-header">
+                      <div>
+                        <h3>Postfix Mapping</h3>
+                        <p>
+                          Replace the scanned suffix for matching post-quantity segments.
+                          Example: <code>18VLEN</code> + <code>SN</code> becomes <code>18VLENSN</code>.
+                        </p>
+                      </div>
+                      <button className="add-mapping-btn" onClick={addPostfixMapping}>
+                        Add Mapping
+                      </button>
+                    </div>
+
+                    <div className="mapping-list">
+                      {labelSettings.postfixMappings.length === 0 ? (
+                        <div className="mapping-empty-state">
+                          No mappings configured. Matching segments will remain exactly as scanned.
+                        </div>
+                      ) : (
+                        labelSettings.postfixMappings.map((mapping, index) => (
+                          <div className="mapping-row" key={`${mapping.matchPrefix || 'mapping'}-${index}`}>
+                            <div className="mapping-field">
+                              <label>Match Prefix</label>
+                              <input
+                                type="text"
+                                value={mapping.matchPrefix}
+                                placeholder="18VLEN"
+                                onChange={(e) => updatePostfixMapping(index, 'matchPrefix', e.target.value)}
+                              />
+                            </div>
+
+                            <div className="mapping-arrow">=</div>
+
+                            <div className="mapping-field">
+                              <label>Forced Postfix</label>
+                              <input
+                                type="text"
+                                value={mapping.postfix}
+                                placeholder="SN"
+                                onChange={(e) => updatePostfixMapping(index, 'postfix', e.target.value)}
+                              />
+                            </div>
+
+                            <button
+                              className="remove-mapping-btn"
+                              onClick={() => removePostfixMapping(index)}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
 
                   <div className="layout-controls-grid">
                     <ControlGroup title="Nokia Logo" itemKey="nokiaLogo" fields={[

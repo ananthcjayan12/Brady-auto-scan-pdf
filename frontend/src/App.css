@@ -615,6 +615,136 @@ body {
   margin-top: 1rem;
 }
 
+.mapping-settings-card {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.mapping-settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.mapping-settings-header h3 {
+  margin: 0 0 0.35rem 0;
+  font-size: 1rem;
+  color: var(--primary);
+}
+
+.mapping-settings-header p {
+  margin: 0;
+  max-width: 640px;
+  color: #5c6678;
+  line-height: 1.5;
+}
+
+.mapping-settings-header code {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.85rem;
+}
+
+.mapping-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.mapping-empty-state {
+  padding: 1rem;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  color: #64748b;
+  background: white;
+}
+
+.mapping-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  gap: 0.9rem;
+  align-items: end;
+  padding: 1rem;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.mapping-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.mapping-field label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #697386;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.mapping-field input {
+  width: 100%;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  box-sizing: border-box;
+  text-transform: uppercase;
+}
+
+.mapping-field input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(18, 65, 145, 0.08);
+}
+
+.mapping-arrow {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--primary);
+  padding-bottom: 0.7rem;
+}
+
+.add-mapping-btn,
+.remove-mapping-btn {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.add-mapping-btn {
+  background: var(--primary);
+  color: white;
+  padding: 0.75rem 1rem;
+}
+
+.add-mapping-btn:hover {
+  opacity: 0.92;
+}
+
+.remove-mapping-btn {
+  background: #fff5f5;
+  color: var(--error);
+  padding: 0.75rem 0.95rem;
+}
+
+.remove-mapping-btn:hover {
+  background: #ffe3e3;
+}
+
 .control-group-card {
   background: white;
   border: 1px solid var(--border);
@@ -755,6 +885,19 @@ body {
 }
 
 @media (max-width: 768px) {
+  .mapping-settings-header {
+    flex-direction: column;
+  }
+
+  .mapping-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .mapping-arrow {
+    display: none;
+  }
+
   .layout-controls-grid {
     grid-template-columns: 1fr;
   }

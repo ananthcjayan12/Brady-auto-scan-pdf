@@ -61,21 +61,53 @@ class NokiaLabelService:
         self.output_folder = output_folder
         logger.info("--- NokiaLabelService Initialized (Direct Printing Version v2.4) ---")
 
-    def _normalize_post_qty_segment(self, segment):
+    def _default_postfix_mappings(self):
+        return [{'matchPrefix': '18VLEN', 'postfix': 'SN'}]
+
+    def _sanitize_postfix_mappings(self, mappings):
+        sanitized = []
+
+        for mapping in mappings or []:
+            if not isinstance(mapping, dict):
+                continue
+
+            match_prefix = str(mapping.get('matchPrefix', '')).strip().upper()
+            postfix = str(mapping.get('postfix', '')).strip().upper()
+
+            if match_prefix and postfix:
+                sanitized.append({
+                    'matchPrefix': match_prefix,
+                    'postfix': postfix
+                })
+
+        return sanitized
+
+    def _resolve_postfix_mappings(self, postfix_mappings):
+        if postfix_mappings is None:
+            postfix_mappings = self._default_postfix_mappings()
+
+        return self._sanitize_postfix_mappings(postfix_mappings)
+
+    def _normalize_post_qty_segment(self, segment, postfix_mappings=None):
         """
-        Nokia's 18VLEN application identifier must always end with SN
-        regardless of the scanned suffix.
+        Replace the scanned suffix for configured post-quantity prefixes.
         """
         cleaned = (segment or '').strip()
-        if cleaned.upper().startswith('18VLEN'):
-            return '18VLENSN'
+        if not cleaned:
+            return cleaned
+
+        upper_cleaned = cleaned.upper()
+        for mapping in self._resolve_postfix_mappings(postfix_mappings):
+            if upper_cleaned.startswith(mapping['matchPrefix']):
+                return f"{mapping['matchPrefix']}{mapping['postfix']}"
+
         return cleaned
 
-    def _normalize_post_qty_segments(self, segments):
+    def _normalize_post_qty_segments(self, segments, postfix_mappings=None):
         return [
             normalized
             for normalized in (
-                self._normalize_post_qty_segment(segment)
+                self._normalize_post_qty_segment(segment, postfix_mappings=postfix_mappings)
                 for segment in (segments or [])
             )
             if normalized
@@ -135,7 +167,7 @@ class NokiaLabelService:
 
         return [found[prefix] for prefix in prefixes if prefix in found]
 
-    def parse_nokia_string(self, raw_string):
+    def parse_nokia_string(self, raw_string, postfix_mappings=None):
         """
         Advanced parser for Nokia strings. 
         Detects if the scan already has ISO-15434 formatting or if it's raw.
@@ -228,7 +260,10 @@ class NokiaLabelService:
             if normalized_segments:
                 parsed['post_qty_segments'] = normalized_segments
 
-            parsed['post_qty_segments'] = self._normalize_post_qty_segments(parsed['post_qty_segments'])
+            parsed['post_qty_segments'] = self._normalize_post_qty_segments(
+                parsed['post_qty_segments'],
+                postfix_mappings=postfix_mappings
+            )
             
             return parsed
 
@@ -274,11 +309,14 @@ class NokiaLabelService:
         if parsed['serial_segments']:
             parsed['serial_no'] = GS.join(parsed['serial_segments'])
 
-        parsed['post_qty_segments'] = self._normalize_post_qty_segments(parsed['post_qty_segments'])
+        parsed['post_qty_segments'] = self._normalize_post_qty_segments(
+            parsed['post_qty_segments'],
+            postfix_mappings=postfix_mappings
+        )
             
         return parsed
 
-    def construct_iso15434_string(self, parsed_data):
+    def construct_iso15434_string(self, parsed_data, postfix_mappings=None):
         """
         Constructs the Data Matrix payload with real ISO-15434 control characters.
         Format: [)> + RS + 06 + GS + 1P... + GS + S... + GS + Q... + ... + RS + EOT
@@ -297,7 +335,10 @@ class NokiaLabelService:
 
         formatted += f"Q{parsed_data['qty']}"
 
-        for segment in self._normalize_post_qty_segments(parsed_data.get('post_qty_segments', [])):
+        for segment in self._normalize_post_qty_segments(
+            parsed_data.get('post_qty_segments', []),
+            postfix_mappings=postfix_mappings
+        ):
             formatted += f"{GS}{segment}"
 
         formatted += RS + EOT
@@ -333,6 +374,7 @@ class NokiaLabelService:
             'labelWidth': 100,
             'labelHeight': 38,
             'barcodeWidthModule': 0.3,
+            'postfixMappings': self._default_postfix_mappings(),
             'layout': {
                 'nokiaLogo': {'x': -2.3, 'y': -1.5, 'w': 24.63, 'h': 9.87},
                 'nokiaText': {'x': 28.0, 'y': 0.1, 'fontSize': 14},
@@ -362,12 +404,14 @@ class NokiaLabelService:
                         s['layout'][comp_key].update(comp_val)
                     else:
                         s['layout'][comp_key] = comp_val
+
+        s['postfixMappings'] = self._resolve_postfix_mappings(s.get('postfixMappings'))
         
         # 1. Parse Data
-        data = self.parse_nokia_string(raw_string)
+        data = self.parse_nokia_string(raw_string, postfix_mappings=s['postfixMappings'])
         
         # 2. Create ISO String for DataMatrix
-        datamatrix_content = self.construct_iso15434_string(data)
+        datamatrix_content = self.construct_iso15434_string(data, postfix_mappings=s['postfixMappings'])
         data['datamatrix_value'] = datamatrix_content
         data['datamatrix_debug'] = self.make_datamatrix_debug_string(datamatrix_content)
 
