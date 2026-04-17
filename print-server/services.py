@@ -61,25 +61,36 @@ class NokiaLabelService:
         self.output_folder = output_folder
         logger.info("--- NokiaLabelService Initialized (Direct Printing Version v2.4) ---")
 
-    def _normalize_post_qty_segment(self, segment):
-        """
-        Nokia's 18VLEN application identifier must always end with SN
-        regardless of the scanned suffix.
-        """
-        cleaned = (segment or '').strip()
-        if cleaned.upper().startswith('18VLEN'):
-            return '18VLENSN'
-        return cleaned
-
-    def _normalize_post_qty_segments(self, segments):
+    def _default_amid_mappings(self):
         return [
-            normalized
-            for normalized in (
-                self._normalize_post_qty_segment(segment)
-                for segment in (segments or [])
-            )
-            if normalized
+            {'partNo': '475773A.102', 'amidCode': 'AMID'},
+            {'partNo': '477066A.101', 'amidCode': 'AMXB'},
         ]
+
+    def _sanitize_amid_mappings(self, mappings):
+        sanitized = []
+        for mapping in mappings or []:
+            if not isinstance(mapping, dict):
+                continue
+
+            part_no = str(mapping.get('partNo', '')).strip().upper()
+            amid_code = str(mapping.get('amidCode', '')).strip().upper()
+            if not part_no or not amid_code:
+                continue
+
+            sanitized.append({
+                'partNo': part_no,
+                'amidCode': amid_code
+            })
+
+        return sanitized
+
+    def _resolve_amid_code(self, part_no, amid_mappings):
+        normalized_part_no = str(part_no or '').strip().upper()
+        for mapping in self._sanitize_amid_mappings(amid_mappings):
+            if normalized_part_no == mapping['partNo']:
+                return mapping['amidCode']
+        return 'AMID'
 
     def _split_additional_segments(self, text):
         """
@@ -228,8 +239,6 @@ class NokiaLabelService:
             if normalized_segments:
                 parsed['post_qty_segments'] = normalized_segments
 
-            parsed['post_qty_segments'] = self._normalize_post_qty_segments(parsed['post_qty_segments'])
-            
             return parsed
 
         segments = clean_string.split(main_delimiter)
@@ -274,8 +283,6 @@ class NokiaLabelService:
         if parsed['serial_segments']:
             parsed['serial_no'] = GS.join(parsed['serial_segments'])
 
-        parsed['post_qty_segments'] = self._normalize_post_qty_segments(parsed['post_qty_segments'])
-            
         return parsed
 
     def construct_iso15434_string(self, parsed_data):
@@ -297,7 +304,7 @@ class NokiaLabelService:
 
         formatted += f"Q{parsed_data['qty']}"
 
-        for segment in self._normalize_post_qty_segments(parsed_data.get('post_qty_segments', [])):
+        for segment in parsed_data.get('post_qty_segments', []):
             formatted += f"{GS}{segment}"
 
         formatted += RS + EOT
@@ -333,6 +340,7 @@ class NokiaLabelService:
             'labelWidth': 100,
             'labelHeight': 38,
             'barcodeWidthModule': 0.3,
+            'amidMappings': self._default_amid_mappings(),
             'layout': {
                 'nokiaLogo': {'x': -2.3, 'y': -1.5, 'w': 24.63, 'h': 9.87},
                 'nokiaText': {'x': 28.0, 'y': 0.1, 'fontSize': 14},
@@ -362,9 +370,14 @@ class NokiaLabelService:
                         s['layout'][comp_key].update(comp_val)
                     else:
                         s['layout'][comp_key] = comp_val
+
+        s['amidMappings'] = self._sanitize_amid_mappings(s.get('amidMappings'))
+        if not s['amidMappings']:
+            s['amidMappings'] = self._default_amid_mappings()
         
         # 1. Parse Data
         data = self.parse_nokia_string(raw_string)
+        data['amid_code'] = self._resolve_amid_code(data.get('part_no'), s['amidMappings'])
         
         # 2. Create ISO String for DataMatrix
         datamatrix_content = self.construct_iso15434_string(data)
@@ -433,7 +446,7 @@ class NokiaLabelService:
         # AMID Text
         cfg = l['amidText']
         c.setFont("Helvetica-Bold", cfg['fontSize'])
-        c.drawString(cfg['x']*mm, (s['labelHeight'] - cfg['y'])*mm - (cfg['fontSize']/2.8)*mm, "AMID")
+        c.drawString(cfg['x']*mm, (s['labelHeight'] - cfg['y'])*mm - (cfg['fontSize']/2.8)*mm, data['amid_code'])
 
         # --- DRAW BARCODES ---
         def draw_barcode(cfg_key, barcode_value):

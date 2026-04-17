@@ -5,7 +5,62 @@ import BarcodeInput from './components/BarcodeInput';
 import './App.css';
 
 const API_BASE_URL = 'http://localhost:5001';
-const SAMPLE_INPUT = '1PABC12345678GS99SXYZ789012345678GSQ10';
+const SAMPLE_INPUT = '1P475773A.102SUK2545A0499Q14LIN18VLENOK';
+
+const getDefaultLabelSettings = () => ({
+  labelWidth: 100,
+  labelHeight: 38,
+  barcodeWidthModule: 0.3,
+  amidMappings: [
+    { partNo: '475773A.102', amidCode: 'AMID' },
+    { partNo: '477066A.101', amidCode: 'AMXB' }
+  ],
+  layout: {
+    nokiaLogo: { x: -2.3, y: -1.5, w: 24.63, h: 9.87 },
+    nokiaText: { x: 28.0, y: 0.1, fontSize: 14 },
+    amidText: { x: 77.0, y: 5.9, fontSize: 14 },
+    ceMark: { x: 62.0, y: 7.0, w: 10.09, h: 9.83 },
+    ukcaMark: { x: 73.0, y: 20.0, w: 10.01, h: 10.0 },
+    barcode1: { x: 2.0, y: 6.6, h: 5.0, fontSize: 10, label: '1P' },
+    barcode2: { x: 2.0, y: 17.0, h: 5.0, fontSize: 10, label: 'S' },
+    barcode3: { x: 2.0, y: 28.0, h: 4.0, fontSize: 10, label: 'Q' },
+    dmBarcode: { x: 75.0, y: 12.5, size: 18.0 },
+    footer: { x: 85.0, y: 35.0, fontSize: 8 }
+  }
+});
+
+const normalizeMapValue = (value = '') => value.toUpperCase().replace(/\s+/g, '');
+
+const hydrateLabelSettings = () => {
+  const defaults = getDefaultLabelSettings();
+  const saved = localStorage.getItem('labelSettings');
+  if (!saved) return defaults;
+
+  try {
+    const parsed = JSON.parse(saved);
+    const mergedLayout = Object.fromEntries(
+      Object.entries(defaults.layout).map(([key, defaultLayout]) => [
+        key,
+        { ...defaultLayout, ...(parsed.layout?.[key] || {}) }
+      ])
+    );
+
+    return {
+      ...defaults,
+      ...parsed,
+      amidMappings: Array.isArray(parsed.amidMappings)
+        ? parsed.amidMappings.map((mapping = {}) => ({
+            partNo: normalizeMapValue(mapping.partNo || ''),
+            amidCode: normalizeMapValue(mapping.amidCode || '')
+          }))
+        : defaults.amidMappings,
+      layout: mergedLayout
+    };
+  } catch (error) {
+    console.error('Failed to parse saved settings:', error);
+    return defaults;
+  }
+};
 
 function App() {
   // Navigation
@@ -29,31 +84,7 @@ function App() {
   });
 
   // Label Settings
-  const [labelSettings, setLabelSettings] = useState(() => {
-    const saved = localStorage.getItem('labelSettings');
-    const defaults = {
-      labelWidth: 100,
-      labelHeight: 38,
-      barcodeWidthModule: 0.3,
-      layout: {
-        nokiaLogo: { x: -2.3, y: -1.5, w: 24.63, h: 9.87 },
-        nokiaText: { x: 28.0, y: 0.1, fontSize: 14 },
-        amidText: { x: 77.0, y: 5.9, fontSize: 14 },
-        ceMark: { x: 62.0, y: 7.0, w: 10.09, h: 9.83 },
-        ukcaMark: { x: 73.0, y: 20.0, w: 10.01, h: 10.0 },
-        barcode1: { x: 2.0, y: 6.6, h: 5.0, fontSize: 10, label: '1P' },
-        barcode2: { x: 2.0, y: 17.0, h: 5.0, fontSize: 10, label: 'S' },
-        barcode3: { x: 2.0, y: 28.0, h: 4.0, fontSize: 10, label: 'Q' },
-        dmBarcode: { x: 75.0, y: 12.5, size: 18.0 },
-        footer: { x: 85.0, y: 35.0, fontSize: 8 }
-      }
-    };
-    if (!saved) return defaults;
-    const parsed = JSON.parse(saved);
-    // Ensure layout exists in saved settings (migration)
-    if (!parsed.layout) parsed.layout = defaults.layout;
-    return parsed;
-  });
+  const [labelSettings, setLabelSettings] = useState(hydrateLabelSettings);
 
   // Preview State
   const [currentLabel, setCurrentLabel] = useState(null);
@@ -181,6 +212,31 @@ function App() {
     }));
   };
 
+  const updateAmidMapping = (index, key, value) => {
+    setLabelSettings(prev => ({
+      ...prev,
+      amidMappings: prev.amidMappings.map((mapping, mappingIndex) =>
+        mappingIndex === index
+          ? { ...mapping, [key]: normalizeMapValue(value) }
+          : mapping
+      )
+    }));
+  };
+
+  const addAmidMapping = () => {
+    setLabelSettings(prev => ({
+      ...prev,
+      amidMappings: [...prev.amidMappings, { partNo: '', amidCode: '' }]
+    }));
+  };
+
+  const removeAmidMapping = (index) => {
+    setLabelSettings(prev => ({
+      ...prev,
+      amidMappings: prev.amidMappings.filter((_, mappingIndex) => mappingIndex !== index)
+    }));
+  };
+
   const ControlGroup = ({ title, itemKey, fields }) => (
     <div className="control-group-card">
       <h4 className="control-group-title">{title}</h4>
@@ -293,6 +349,10 @@ function App() {
                       <span className="detail-value">{(currentLabel || templateLabel).parsed_data.qty}</span>
                     </div>
                     <div className="detail-item">
+                      <span className="detail-label">AMID Code</span>
+                      <span className="detail-value">{(currentLabel || templateLabel).parsed_data.amid_code}</span>
+                    </div>
+                    <div className="detail-item">
                       <span className="detail-label">DataMatrix Out</span>
                       <span className="detail-value">{(currentLabel || templateLabel).parsed_data.datamatrix_debug}</span>
                     </div>
@@ -386,6 +446,56 @@ function App() {
 
                 <div className="settings-section">
                   <h2>Layout Controls</h2>
+
+                  <div className="mapping-settings-card">
+                    <div className="mapping-settings-header">
+                      <div>
+                        <h3>Part Number To AMID Mapping</h3>
+                        <p>Set AMID label value by exact part number match.</p>
+                      </div>
+                      <button className="add-mapping-btn" onClick={addAmidMapping}>
+                        Add Mapping
+                      </button>
+                    </div>
+
+                    <div className="mapping-list">
+                      {labelSettings.amidMappings.length === 0 ? (
+                        <div className="mapping-empty-state">
+                          No mapping rows. Default value will be <code>AMID</code>.
+                        </div>
+                      ) : (
+                        labelSettings.amidMappings.map((mapping, index) => (
+                          <div className="mapping-row" key={`${mapping.partNo || 'part'}-${index}`}>
+                            <div className="mapping-field">
+                              <label>Part Number</label>
+                              <input
+                                type="text"
+                                value={mapping.partNo}
+                                placeholder="475773A.102"
+                                onChange={(e) => updateAmidMapping(index, 'partNo', e.target.value)}
+                              />
+                            </div>
+                            <div className="mapping-arrow">→</div>
+                            <div className="mapping-field">
+                              <label>AMID Value</label>
+                              <input
+                                type="text"
+                                value={mapping.amidCode}
+                                placeholder="AMXB"
+                                onChange={(e) => updateAmidMapping(index, 'amidCode', e.target.value)}
+                              />
+                            </div>
+                            <button
+                              className="remove-mapping-btn"
+                              onClick={() => removeAmidMapping(index)}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
 
                   <div className="layout-controls-grid">
                     <ControlGroup title="Nokia Logo" itemKey="nokiaLogo" fields={[
